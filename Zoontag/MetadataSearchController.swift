@@ -9,6 +9,7 @@ final class MetadataSearchController: ObservableObject {
 
     private let facetCounter = FacetCounter()
     private let resultLimit = 5000
+    private let enableMetadataQuery = false
 
     // Exposed facets (computed from results)
     @Published private(set) var topFacets: [TagFacet] = []
@@ -45,39 +46,43 @@ final class MetadataSearchController: ObservableObject {
             return
         }
 
-        let q = NSMetadataQuery()
-        query = q
+        if enableMetadataQuery {
+            let q = NSMetadataQuery()
+            query = q
 
-        // Build predicate (nil == match all tags)
-        q.predicate = SpotlightTagQueryBuilder.predicate(include: state.includeTags, exclude: state.excludeTags)
+            // Build predicate (nil == match all tags)
+            q.predicate = SpotlightTagQueryBuilder.predicate(include: state.includeTags, exclude: state.excludeTags)
 
-        // We’ll access URL, filename, and tags from attributes.
-        // (NSMetadataQuery returns NSMetadataItems; values are read via keys below.)
-        q.notificationBatchingInterval = 0.2
+            // We’ll access URL, filename, and tags from attributes.
+            // (NSMetadataQuery returns NSMetadataItems; values are read via keys below.)
+            q.notificationBatchingInterval = 0.2
 
-        isSearching = true
+            isSearching = true
 
-        let nc = NotificationCenter.default
-        observers.append(nc.addObserver(forName: .NSMetadataQueryDidFinishGathering, object: q, queue: .main) { [weak self] _ in
-            self?.refreshFromQuery()
-            self?.isSearching = false
-        })
+            let nc = NotificationCenter.default
+            observers.append(nc.addObserver(forName: .NSMetadataQueryDidFinishGathering, object: q, queue: .main) { [weak self] _ in
+                self?.refreshFromQuery()
+                self?.isSearching = false
+            })
 
-        observers.append(nc.addObserver(forName: .NSMetadataQueryDidUpdate, object: q, queue: .main) { [weak self] _ in
-            self?.refreshFromQuery()
-        })
+            observers.append(nc.addObserver(forName: .NSMetadataQueryDidUpdate, object: q, queue: .main) { [weak self] _ in
+                self?.refreshFromQuery()
+            })
 
-        let primaryScopes = scopeURLs.map { $0 as NSURL }
-        if startQuery(q, scopes: primaryScopes) {
-            return
+            let primaryScopes = scopeURLs.map { $0 as NSURL }
+            if startQuery(q, scopes: primaryScopes) {
+                return
+            }
+
+            if let fallbackScopes = fallbackSearchScopes(for: scopeURLs),
+               startQuery(q, scopes: fallbackScopes) {
+                return
+            }
+
+            stop(releaseSecurityScopedResources: false)
+        } else {
+            stop(releaseSecurityScopedResources: false)
         }
-
-        if let fallbackScopes = fallbackSearchScopes(for: scopeURLs),
-           startQuery(q, scopes: fallbackScopes) {
-            return
-        }
-
-        stop(releaseSecurityScopedResources: false)
 
         if hasTagFilters {
             if runMDFind(scopeURLs: scopeURLs,
