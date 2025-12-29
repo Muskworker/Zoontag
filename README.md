@@ -38,6 +38,9 @@ Important note: Spotlight does not provide “facets” natively, so facet count
 - exclude tags: AND chain of `NOT (kMDItemUserTags == <tag>)`
 - scope: user-picked folders
 
+## Spotlight fallback
+If `NSMetadataQuery` refuses to start even though indexing is available, Zoontag now falls back to invoking `/usr/bin/mdfind` with the same include/exclude tags and scopes, then hydrates tag facets from that output. This keeps searches functional while we continue investigating the underlying API failure.
+
 ## Next steps (likely Codex iteration plan)
 1) Swap icons for real thumbnails via `QuickLookThumbnailing`
 2) Incremental / cancelable facet counting (and/or sampling)
@@ -47,6 +50,8 @@ Important note: Spotlight does not provide “facets” natively, so facet count
 6) Add OR groups (booru-style “(tagA OR tagB)”)
 
 ## Notes for sandboxing
+Zoontag currently ships with the App Sandbox disabled so Spotlight queries can traverse arbitrary Finder scopes without security-scoped bookmarks. Re-enable the sandbox only after we persist bookmarks and request scopes per the checklist below.
+
 If we sandbox later, we should:
 - persist user-selected folders as security-scoped bookmarks
 - startAccessingSecurityScopedResource when querying/opening files

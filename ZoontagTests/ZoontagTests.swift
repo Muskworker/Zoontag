@@ -20,4 +20,17 @@ final class ZoontagTests: XCTestCase {
         XCTAssertEqual(counts["blue"], 2)
         XCTAssertEqual(counts["green"], 1)
     }
+
+    func testSpotlightPredicateIsNilWhenNoTags() {
+        XCTAssertNil(SpotlightTagQueryBuilder.predicate(include: [], exclude: []))
+    }
+
+    func testMDFindQueryEscapesValues() {
+        let query = SpotlightTagQueryBuilder.queryString(include: ["cat's"], exclude: ["blue\\green"])
+        XCTAssertEqual(query, "kMDItemUserTags == 'cat\\'s' && !(kMDItemUserTags == 'blue\\\\green')")
+    }
+
+    func testMDFindQueryFallsBackToTruePredicateWhenEmpty() {
+        XCTAssertEqual(SpotlightTagQueryBuilder.queryString(include: [], exclude: []), "TRUEPREDICATE")
+    }
 }

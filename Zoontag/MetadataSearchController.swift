@@ -2,14 +2,13 @@ import Foundation
 import AppKit
 import Combine
 
-private let metadataUserTagsAttribute = "kMDItemUserTags"
-
 final class MetadataSearchController: ObservableObject {
     @Published private(set) var results: [SearchResultItem] = []
     @Published private(set) var isSearching: Bool = false
     @Published private(set) var lastError: String? = nil
 
     private let facetCounter = FacetCounter()
+    private let resultLimit = 5000
 
     // Exposed facets (computed from results)
     @Published private(set) var topFacets: [TagFacet] = []
@@ -17,12 +16,18 @@ final class MetadataSearchController: ObservableObject {
     private var query: NSMetadataQuery?
     private var observers: [NSObjectProtocol] = []
     private var securityScopedURLs: [URL] = []
+    private var currentRunToken = UUID()
+    private let fallbackQueue = DispatchQueue(label: "MetadataSearchController.mdfind", qos: .userInitiated)
+    private var mdfindTask: Process?
 
     deinit {
         stop()
     }
 
     func run(state: QueryState) {
+        let runToken = UUID()
+        currentRunToken = runToken
+
         stop()
         lastError = nil
 
@@ -42,7 +47,7 @@ final class MetadataSearchController: ObservableObject {
         query = q
 
         // Build predicate (nil == match all tags)
-        q.predicate = buildPredicate(include: state.includeTags, exclude: state.excludeTags)
+        q.predicate = SpotlightTagQueryBuilder.predicate(include: state.includeTags, exclude: state.excludeTags)
 
         // We’ll access URL, filename, and tags from attributes.
         // (NSMetadataQuery returns NSMetadataItems; values are read via keys below.)
@@ -70,11 +75,20 @@ final class MetadataSearchController: ObservableObject {
             return
         }
 
+        stop(releaseSecurityScopedResources: false)
+
+        if runMDFind(scopeURLs: scopeURLs,
+                     include: state.includeTags,
+                     exclude: state.excludeTags,
+                     runToken: runToken) {
+            return
+        }
+
         stop()
         lastError = spotlightFailureMessage(for: scopeURLs)
     }
 
-    func stop() {
+    func stop(releaseSecurityScopedResources: Bool = true) {
         if let q = query {
             q.stop()
             query = nil
@@ -85,10 +99,115 @@ final class MetadataSearchController: ObservableObject {
         observers.removeAll()
         isSearching = false
 
-        for scopedURL in securityScopedURLs {
-            scopedURL.stopAccessingSecurityScopedResource()
+        fallbackQueue.async { [weak self] in
+            guard let self else { return }
+            self.mdfindTask?.terminate()
+            self.mdfindTask = nil
         }
-        securityScopedURLs.removeAll()
+
+        if releaseSecurityScopedResources {
+            for scopedURL in securityScopedURLs {
+                scopedURL.stopAccessingSecurityScopedResource()
+            }
+            securityScopedURLs.removeAll()
+        }
+    }
+
+    private func runMDFind(scopeURLs: [URL],
+                           include: Set<String>,
+                           exclude: Set<String>,
+                           runToken: UUID) -> Bool {
+        guard !scopeURLs.isEmpty else { return false }
+
+        let arguments = buildMDFindArguments(scopeURLs: scopeURLs, include: include, exclude: exclude)
+        guard !arguments.isEmpty else { return false }
+
+        isSearching = true
+
+        fallbackQueue.async { [weak self] in
+            guard let self else { return }
+
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
+            task.arguments = arguments
+
+            let pipe = Pipe()
+            task.standardOutput = pipe
+            task.standardError = pipe
+            self.mdfindTask = task
+
+            do {
+                try task.run()
+            } catch {
+                self.mdfindTask = nil
+                self.handleMDFindFailure("Failed to run mdfind: \(error.localizedDescription)", runToken: runToken)
+                return
+            }
+
+            task.waitUntilExit()
+            self.mdfindTask = nil
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(decoding: data, as: UTF8.self)
+
+            guard task.terminationStatus == 0 else {
+                let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+                let detail = trimmed.isEmpty ? "" : " Details: \(trimmed)"
+                self.handleMDFindFailure("mdfind exited with code \(task.terminationStatus).\(detail)", runToken: runToken)
+                return
+            }
+
+            let lines = output.split(whereSeparator: \.isNewline)
+            var items: [SearchResultItem] = []
+            items.reserveCapacity(min(lines.count, self.resultLimit))
+
+            for line in lines {
+                if items.count >= self.resultLimit {
+                    break
+                }
+                let path = String(line)
+                guard !path.isEmpty else { continue }
+                let url = URL(fileURLWithPath: path)
+                let resourceValues = try? url.resourceValues(forKeys: [.localizedNameKey, .tagNamesKey])
+                let name = resourceValues?.localizedName ?? url.lastPathComponent
+                let tags = resourceValues?.tagNames ?? []
+                items.append(SearchResultItem(url: url, displayName: name, tags: tags))
+            }
+
+            DispatchQueue.main.async {
+                guard self.currentRunToken == runToken else { return }
+                self.results = items
+                self.topFacets = self.facetCounter.topTags(from: items)
+                self.isSearching = false
+                self.lastError = nil
+            }
+        }
+
+        return true
+    }
+
+    private func handleMDFindFailure(_ message: String, runToken: UUID) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.currentRunToken == runToken else { return }
+            self.results = []
+            self.topFacets = []
+            self.isSearching = false
+            self.lastError = message
+        }
+    }
+
+    private func buildMDFindArguments(scopeURLs: [URL],
+                                      include: Set<String>,
+                                      exclude: Set<String>) -> [String] {
+        guard !scopeURLs.isEmpty else { return [] }
+
+        var args: [String] = []
+        for url in scopeURLs {
+            args.append(contentsOf: ["-onlyin", url.path])
+        }
+
+        args.append(SpotlightTagQueryBuilder.queryString(include: include, exclude: exclude))
+        return args
     }
 
     private func refreshFromQuery() {
@@ -98,40 +217,20 @@ final class MetadataSearchController: ObservableObject {
         let items = (q.results as? [NSMetadataItem]) ?? []
 
         var newResults: [SearchResultItem] = []
-        newResults.reserveCapacity(min(items.count, 5000))
+        newResults.reserveCapacity(min(items.count, resultLimit))
 
         // Cap for now to keep UI snappy; later we can paginate/infinite scroll.
-        let cap = 5000
-        for item in items.prefix(cap) {
+        for item in items.prefix(resultLimit) {
             guard let url = item.value(forAttribute: NSMetadataItemURLKey) as? URL else { continue }
             let name = (item.value(forAttribute: kMDItemFSName as String) as? String) ?? url.lastPathComponent
 
-            let tags = (item.value(forAttribute: metadataUserTagsAttribute) as? [String]) ?? []
+            let tags = (item.value(forAttribute: SpotlightTagQueryBuilder.metadataUserTagsAttribute) as? [String]) ?? []
 
             newResults.append(SearchResultItem(url: url, displayName: name, tags: tags))
         }
 
         results = newResults
         topFacets = facetCounter.topTags(from: newResults)
-    }
-
-    private func buildPredicate(include: Set<String>, exclude: Set<String>) -> NSPredicate? {
-        var sub: [NSPredicate] = []
-
-        for tag in include.sorted() {
-            sub.append(NSPredicate(format: "%K == %@", metadataUserTagsAttribute, tag))
-        }
-
-        for tag in exclude.sorted() {
-            let p = NSPredicate(format: "%K == %@", metadataUserTagsAttribute, tag)
-            sub.append(NSCompoundPredicate(notPredicateWithSubpredicate: p))
-        }
-
-        // If no include/exclude tags, let Spotlight match everything in scope by
-        // returning nil (NSMetadataQuery treats nil predicate as TRUEPREDICATE).
-        guard !sub.isEmpty else { return nil }
-
-        return NSCompoundPredicate(andPredicateWithSubpredicates: sub)
     }
 
     @discardableResult
@@ -285,4 +384,48 @@ private enum SpotlightIndexingState {
     case disabled
     case serverDisabled
     case unknown(String?)
+}
+
+enum SpotlightTagQueryBuilder {
+    static let metadataUserTagsAttribute = "kMDItemUserTags"
+
+    static func predicate(include: Set<String>, exclude: Set<String>) -> NSPredicate? {
+        var predicates: [NSPredicate] = []
+
+        for tag in include.sorted() {
+            predicates.append(NSPredicate(format: "%K == %@", metadataUserTagsAttribute, tag))
+        }
+
+        for tag in exclude.sorted() {
+            let predicate = NSPredicate(format: "%K == %@", metadataUserTagsAttribute, tag)
+            predicates.append(NSCompoundPredicate(notPredicateWithSubpredicate: predicate))
+        }
+
+        guard !predicates.isEmpty else { return nil }
+        return NSCompoundPredicate(andPredicateWithSubpredicates: predicates)
+    }
+
+    static func queryString(include: Set<String>, exclude: Set<String>) -> String {
+        var clauses: [String] = []
+
+        for tag in include.sorted() {
+            clauses.append("\(metadataUserTagsAttribute) == '\(escape(tag))'")
+        }
+
+        for tag in exclude.sorted() {
+            clauses.append("!(\(metadataUserTagsAttribute) == '\(escape(tag))')")
+        }
+
+        if clauses.isEmpty {
+            return "TRUEPREDICATE"
+        }
+
+        return clauses.joined(separator: " && ")
+    }
+
+    private static func escape(_ tag: String) -> String {
+        var escaped = tag.replacingOccurrences(of: "\\", with: "\\\\")
+        escaped = escaped.replacingOccurrences(of: "'", with: "\\'")
+        return escaped
+    }
 }
