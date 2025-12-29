@@ -7,12 +7,32 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		168547772F00651A00BC9972 /* README.md in Sources */ = {isa = PBXBuildFile; fileRef = 168547762F00651600BC9972 /* README.md */; };
+		1685478F2F00690000BC9972 /* ZoontagTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1685478E2F00690000BC9972 /* ZoontagTests.swift */; };
+		1685479A2F006A0000BC9972 /* FacetCounter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1685479B2F006A0000BC9972 /* FacetCounter.swift */; };
+		1685479C2F006A0000BC9972 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1685479D2F006A0000BC9972 /* Models.swift */; };
+		168547A02F006AB900BC9972 /* MetadataSearchController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1685479F2F006AB900BC9972 /* MetadataSearchController.swift */; };
+		168547A22F006AC200BC9972 /* QueryState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 168547A12F006AC200BC9972 /* QueryState.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		168547972F00690000BC9972 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 168547542F00643D00BC9972 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1685475B2F00643D00BC9972;
+			remoteInfo = Zoontag;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		1685475C2F00643D00BC9972 /* Zoontag.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Zoontag.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		168547762F00651600BC9972 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = README.md; sourceTree = "<group>"; };
+		168547762F00651600BC9972 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		1685478C2F00690000BC9972 /* ZoontagTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ZoontagTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1685478E2F00690000BC9972 /* ZoontagTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZoontagTests.swift; sourceTree = "<group>"; };
+		1685479B2F006A0000BC9972 /* FacetCounter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FacetCounter.swift; path = ../Zoontag/FacetCounter.swift; sourceTree = "<group>"; };
+		1685479D2F006A0000BC9972 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Models.swift; path = ../Zoontag/Models.swift; sourceTree = "<group>"; };
+		1685479F2F006AB900BC9972 /* MetadataSearchController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetadataSearchController.swift; path = ../Zoontag/MetadataSearchController.swift; sourceTree = "<group>"; };
+		168547A12F006AC200BC9972 /* QueryState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = QueryState.swift; path = ../Zoontag/QueryState.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -31,6 +51,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		168547912F00690000BC9972 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -38,6 +65,7 @@
 			isa = PBXGroup;
 			children = (
 				168547762F00651600BC9972 /* README.md */,
+				168547982F00690000BC9972 /* ZoontagTests */,
 				1685475E2F00643D00BC9972 /* Zoontag */,
 				1685475D2F00643D00BC9972 /* Products */,
 			);
@@ -47,8 +75,21 @@
 			isa = PBXGroup;
 			children = (
 				1685475C2F00643D00BC9972 /* Zoontag.app */,
+				1685478C2F00690000BC9972 /* ZoontagTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		168547982F00690000BC9972 /* ZoontagTests */ = {
+			isa = PBXGroup;
+			children = (
+				1685478E2F00690000BC9972 /* ZoontagTests.swift */,
+				1685479B2F006A0000BC9972 /* FacetCounter.swift */,
+				1685479D2F006A0000BC9972 /* Models.swift */,
+				1685479F2F006AB900BC9972 /* MetadataSearchController.swift */,
+				168547A12F006AC200BC9972 /* QueryState.swift */,
+			);
+			path = ZoontagTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -76,6 +117,24 @@
 			productReference = 1685475C2F00643D00BC9972 /* Zoontag.app */;
 			productType = "com.apple.product-type.application";
 		};
+		1685478D2F00690000BC9972 /* ZoontagTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 168547932F00690000BC9972 /* Build configuration list for PBXNativeTarget "ZoontagTests" */;
+			buildPhases = (
+				168547902F00690000BC9972 /* Sources */,
+				168547912F00690000BC9972 /* Frameworks */,
+				168547922F00690000BC9972 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				168547962F00690000BC9972 /* PBXTargetDependency */,
+			);
+			name = ZoontagTests;
+			productName = ZoontagTests;
+			productReference = 1685478C2F00690000BC9972 /* ZoontagTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -88,6 +147,10 @@
 				TargetAttributes = {
 					1685475B2F00643D00BC9972 = {
 						CreatedOnToolsVersion = 26.1.1;
+					};
+					1685478D2F00690000BC9972 = {
+						CreatedOnToolsVersion = 26.1.1;
+						TestTargetID = 1685475B2F00643D00BC9972;
 					};
 				};
 			};
@@ -106,12 +169,20 @@
 			projectRoot = "";
 			targets = (
 				1685475B2F00643D00BC9972 /* Zoontag */,
+				1685478D2F00690000BC9972 /* ZoontagTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		1685475A2F00643D00BC9972 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		168547922F00690000BC9972 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -125,11 +196,30 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				168547772F00651A00BC9972 /* README.md in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		168547902F00690000BC9972 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1685479A2F006A0000BC9972 /* FacetCounter.swift in Sources */,
+				168547A02F006AB900BC9972 /* MetadataSearchController.swift in Sources */,
+				168547A22F006AC200BC9972 /* QueryState.swift in Sources */,
+				1685479C2F006A0000BC9972 /* Models.swift in Sources */,
+				1685478F2F00690000BC9972 /* ZoontagTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		168547962F00690000BC9972 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1685475B2F00643D00BC9972 /* Zoontag */;
+			targetProxy = 168547972F00690000BC9972 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		168547652F00643F00BC9972 /* Debug */ = {
@@ -310,6 +400,57 @@
 			};
 			name = Release;
 		};
+		168547942F00690000BC9972 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				FRAMEWORK_SEARCH_PATHS = "$(inherited)";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleVersion = "1";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.zoontag.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "";
+			};
+			name = Debug;
+		};
+		168547952F00690000BC9972 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				FRAMEWORK_SEARCH_PATHS = "$(inherited)";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleVersion = "1";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.zoontag.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -330,6 +471,15 @@
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
+		};
+		168547932F00690000BC9972 /* Build configuration list for PBXNativeTarget "ZoontagTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				168547942F00690000BC9972 /* Debug */,
+				168547952F00690000BC9972 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
 	};

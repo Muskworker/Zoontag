@@ -1,5 +1,8 @@
 import Foundation
 import AppKit
+import Combine
+
+private let metadataUserTagsAttribute = "kMDItemUserTags"
 
 final class MetadataSearchController: ObservableObject {
     @Published private(set) var results: [SearchResultItem] = []
@@ -13,6 +16,7 @@ final class MetadataSearchController: ObservableObject {
 
     private var query: NSMetadataQuery?
     private var observers: [NSObjectProtocol] = []
+    private var securityScopedURLs: [URL] = []
 
     deinit {
         stop()
@@ -28,13 +32,16 @@ final class MetadataSearchController: ObservableObject {
             return
         }
 
+        let scopeURLs = beginSecurityScope(for: state.scopeURLs)
+        guard !scopeURLs.isEmpty else {
+            lastError = "macOS denied access to the selected folder."
+            return
+        }
+
         let q = NSMetadataQuery()
         query = q
 
-        // Restrict search to chosen folders
-        q.searchScopes = state.scopeURLs
-
-        // Build predicate
+        // Build predicate (nil == match all tags)
         q.predicate = buildPredicate(include: state.includeTags, exclude: state.excludeTags)
 
         // We’ll access URL, filename, and tags from attributes.
@@ -53,11 +60,18 @@ final class MetadataSearchController: ObservableObject {
             self?.refreshFromQuery()
         })
 
-        // Start
-        if !q.start() {
-            lastError = "Failed to start Spotlight query."
-            isSearching = false
+        let primaryScopes = scopeURLs.map { $0 as NSURL }
+        if startQuery(q, scopes: primaryScopes) {
+            return
         }
+
+        if let fallbackScopes = fallbackSearchScopes(for: scopeURLs),
+           startQuery(q, scopes: fallbackScopes) {
+            return
+        }
+
+        stop()
+        lastError = spotlightFailureMessage(for: scopeURLs)
     }
 
     func stop() {
@@ -70,6 +84,11 @@ final class MetadataSearchController: ObservableObject {
         }
         observers.removeAll()
         isSearching = false
+
+        for scopedURL in securityScopedURLs {
+            scopedURL.stopAccessingSecurityScopedResource()
+        }
+        securityScopedURLs.removeAll()
     }
 
     private func refreshFromQuery() {
@@ -87,7 +106,7 @@ final class MetadataSearchController: ObservableObject {
             guard let url = item.value(forAttribute: NSMetadataItemURLKey) as? URL else { continue }
             let name = (item.value(forAttribute: kMDItemFSName as String) as? String) ?? url.lastPathComponent
 
-            let tags = (item.value(forAttribute: kMDItemUserTags as String) as? [String]) ?? []
+            let tags = (item.value(forAttribute: metadataUserTagsAttribute) as? [String]) ?? []
 
             newResults.append(SearchResultItem(url: url, displayName: name, tags: tags))
         }
@@ -96,23 +115,81 @@ final class MetadataSearchController: ObservableObject {
         topFacets = facetCounter.topTags(from: newResults)
     }
 
-    private func buildPredicate(include: Set<String>, exclude: Set<String>) -> NSPredicate {
+    private func buildPredicate(include: Set<String>, exclude: Set<String>) -> NSPredicate? {
         var sub: [NSPredicate] = []
 
         for tag in include.sorted() {
-            sub.append(NSPredicate(format: "%K == %@", kMDItemUserTags as String, tag))
+            sub.append(NSPredicate(format: "%K == %@", metadataUserTagsAttribute, tag))
         }
 
         for tag in exclude.sorted() {
-            let p = NSPredicate(format: "%K == %@", kMDItemUserTags as String, tag)
+            let p = NSPredicate(format: "%K == %@", metadataUserTagsAttribute, tag)
             sub.append(NSCompoundPredicate(notPredicateWithSubpredicate: p))
         }
 
-        if sub.isEmpty {
-            // No tag filter: show everything in scope
-            return NSPredicate(value: true)
-        } else {
-            return NSCompoundPredicate(andPredicateWithSubpredicates: sub)
+        // If no include/exclude tags, let Spotlight match everything in scope by
+        // returning nil (NSMetadataQuery treats nil predicate as TRUEPREDICATE).
+        guard !sub.isEmpty else { return nil }
+
+        return NSCompoundPredicate(andPredicateWithSubpredicates: sub)
+    }
+
+    @discardableResult
+    private func beginSecurityScope(for urls: [URL]) -> [URL] {
+        var scopes: [URL] = []
+
+        // Release any prior scope access before starting new ones.
+        for scopedURL in securityScopedURLs {
+            scopedURL.stopAccessingSecurityScopedResource()
         }
+        securityScopedURLs.removeAll()
+
+        for url in urls {
+            if url.startAccessingSecurityScopedResource() {
+                securityScopedURLs.append(url)
+            }
+            scopes.append(url)
+        }
+
+        return scopes
+    }
+
+    private func startQuery(_ query: NSMetadataQuery, scopes: [Any]) -> Bool {
+        guard !scopes.isEmpty else { return false }
+        query.searchScopes = scopes
+        return query.start()
+    }
+
+    private func spotlightFailureMessage(for scopes: [URL]) -> String {
+        let desc = scopes.map(\.path).joined(separator: ", ")
+        return """
+        Failed to start Spotlight query for \(desc).
+        Spotlight indexing may be disabled. Open System Settings ▸ Siri & Spotlight or run `mdutil -i on <path>` to re-enable indexing, then try again.
+        """
+    }
+
+    private func fallbackSearchScopes(for urls: [URL]) -> [Any]? {
+        var scopes: [Any] = []
+        var addedFallback = false
+
+        for url in urls {
+            if url.isEntireDiskScope {
+                addedFallback = true
+                if !scopes.contains(where: { ($0 as? String) == NSMetadataQueryLocalComputerScope }) {
+                    scopes.append(NSMetadataQueryLocalComputerScope)
+                }
+            } else {
+                scopes.append(url.resolvingSymlinksInPath().path)
+            }
+        }
+
+        return addedFallback ? scopes : nil
+    }
+}
+
+private extension URL {
+    var isEntireDiskScope: Bool {
+        let resolvedPath = resolvingSymlinksInPath().standardizedFileURL.path
+        return resolvedPath == "/" || resolvedPath == "/System/Volumes/Data"
     }
 }
