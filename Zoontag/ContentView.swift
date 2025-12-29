@@ -50,75 +50,79 @@ struct ContentView: View {
     // MARK: - Sidebar
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            GroupBox("Query") {
-                VStack(alignment: .leading, spacing: 8) {
-                    tagChips(title: "Include", tags: Array(state.includeTags).sorted(), tint: .green) { tag in
-                        state.includeTags.remove(tag)
-                    }
-
-                    tagChips(title: "Exclude", tags: Array(state.excludeTags).sorted(), tint: .red) { tag in
-                        state.excludeTags.remove(tag)
-                    }
-                }
-                .padding(.top, 4)
-            }
-
-            GroupBox("Top tags in results") {
-                if state.scopeURLs.isEmpty {
-                    Text("Choose a folder to begin.")
-                        .foregroundStyle(.secondary)
-                        .padding(.vertical, 4)
-                } else if search.topFacets.isEmpty {
-                    Text("No tags found in current results.")
-                        .foregroundStyle(.secondary)
-                        .padding(.vertical, 4)
-                } else {
-                    List(search.topFacets) { facet in
-                        HStack(spacing: 10) {
-                            Button {
-                                include(tag: facet.tag)
-                            } label: {
-                                Image(systemName: "plus.circle.fill")
-                                    .foregroundStyle(.green)
-                            }
-                            .buttonStyle(.plain)
-
-                            Button {
-                                exclude(tag: facet.tag)
-                            } label: {
-                                Image(systemName: "minus.circle.fill")
-                                    .foregroundStyle(.red)
-                            }
-                            .buttonStyle(.plain)
-
-                            Text(facet.tag)
-                                .lineLimit(1)
-
-                            Spacer()
-                            Text("\(facet.count)")
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                GroupBox("Query") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        tagChips(title: "Include", tags: Array(state.includeTags).sorted(), tint: .green) { tag in
+                            state.includeTags.remove(tag)
                         }
-                        .contentShape(Rectangle())
-                        .contextMenu {
-                            Button("Include") { include(tag: facet.tag) }
-                            Button("Exclude") { exclude(tag: facet.tag) }
+
+                        tagChips(title: "Exclude", tags: Array(state.excludeTags).sorted(), tint: .red) { tag in
+                            state.excludeTags.remove(tag)
                         }
                     }
-                    .listStyle(.inset)
+                    .padding(.top, 4)
+                }
+
+                GroupBox("Top tags in results") {
+                    if state.scopeURLs.isEmpty {
+                        Text("Choose a folder to begin.")
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 4)
+                    } else if search.topFacets.isEmpty {
+                        Text("No tags found in current results.")
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 4)
+                    } else {
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 8) {
+                                ForEach(search.topFacets) { facet in
+                                    HStack(spacing: 10) {
+                                        Button {
+                                            include(tag: facet.tag)
+                                        } label: {
+                                            Image(systemName: "plus.circle.fill")
+                                                .foregroundStyle(.green)
+                                        }
+                                        .buttonStyle(.plain)
+
+                                        Button {
+                                            exclude(tag: facet.tag)
+                                        } label: {
+                                            Image(systemName: "minus.circle.fill")
+                                                .foregroundStyle(.red)
+                                        }
+                                        .buttonStyle(.plain)
+
+                                        Text(facet.tag)
+                                            .lineLimit(1)
+
+                                        Spacer()
+                                        Text("\(facet.count)")
+                                            .foregroundStyle(.secondary)
+                                            .monospacedDigit()
+                                    }
+                                    .contentShape(Rectangle())
+                                    .contextMenu {
+                                        Button("Include") { include(tag: facet.tag) }
+                                        Button("Exclude") { exclude(tag: facet.tag) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let err = search.lastError {
+                    Text(err)
+                        .foregroundStyle(.red)
+                        .font(.footnote)
                 }
             }
-
-            Spacer()
-
-            if let err = search.lastError {
-                Text(err)
-                    .foregroundStyle(.red)
-                    .font(.footnote)
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
         }
-        .padding()
     }
 
     // MARK: - Main grid
@@ -205,11 +209,15 @@ struct ContentView: View {
                     Text("No tags.")
                         .foregroundStyle(.secondary)
                 } else {
-                    FlowWrap(tags: item.tags) { tag in
-                        Text(tag)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(RoundedRectangle(cornerRadius: 10).fill(Color.gray.opacity(0.15)))
+                    let columns = [GridItem(.adaptive(minimum: 100), spacing: 8, alignment: .leading)]
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                        ForEach(item.tags, id: \.self) { tag in
+                            Text(tag)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(RoundedRectangle(cornerRadius: 10).fill(Color.gray.opacity(0.15)))
+                        }
                     }
                 }
 
@@ -270,70 +278,27 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
                     .padding(.vertical, 2)
             } else {
-                FlowWrap(tags: tags) { tag in
-                    HStack(spacing: 6) {
-                        Text(tag)
-                        Button {
-                            onRemove(tag)
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(tint.opacity(0.8))
+                let columns = [GridItem(.adaptive(minimum: 140), spacing: 8, alignment: .leading)]
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                    ForEach(tags, id: \.self) { tag in
+                        HStack(spacing: 6) {
+                            Text(tag)
+                                .lineLimit(1)
+                            Button {
+                                onRemove(tag)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(tint.opacity(0.8))
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(tint.opacity(0.12)))
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(tint.opacity(0.12)))
                 }
             }
         }
-    }
-}
-
-/// Simple flow layout for chips.
-struct FlowWrap<T: Hashable, Content: View>: View {
-    let tags: [T]
-    let content: (T) -> Content
-
-    @State private var totalHeight: CGFloat = .zero
-
-    var body: some View {
-        GeometryReader { geo in
-            self.generateContent(in: geo)
-        }
-        .frame(height: totalHeight)
-    }
-
-    private func generateContent(in geo: GeometryProxy) -> some View {
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-
-        return ZStack(alignment: .topLeading) {
-            ForEach(tags, id: \.self) { tag in
-                content(tag)
-                    .padding(.trailing, 6)
-                    .padding(.bottom, 6)
-                    .alignmentGuide(.leading) { d in
-                        if (x + d.width) > geo.size.width {
-                            x = 0
-                            y -= d.height
-                        }
-                        let result = x
-                        x += d.width
-                        return result
-                    }
-                    .alignmentGuide(.top) { d in
-                        let result = y
-                        return result
-                    }
-            }
-        }
-        .background(
-            GeometryReader { geo2 in
-                Color.clear
-                    .onAppear { totalHeight = geo2.size.height }
-                    .onChange(of: geo2.size.height) { _, h in totalHeight = h }
-            }
-        )
     }
 }
