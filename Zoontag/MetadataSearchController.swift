@@ -31,6 +31,8 @@ final class MetadataSearchController: ObservableObject {
         stop()
         lastError = nil
 
+        let hasTagFilters = !state.includeTags.isEmpty || !state.excludeTags.isEmpty
+
         guard !state.scopeURLs.isEmpty else {
             results = []
             topFacets = []
@@ -77,10 +79,14 @@ final class MetadataSearchController: ObservableObject {
 
         stop(releaseSecurityScopedResources: false)
 
-        if runMDFind(scopeURLs: scopeURLs,
-                     include: state.includeTags,
-                     exclude: state.excludeTags,
-                     runToken: runToken) {
+        if hasTagFilters {
+            if runMDFind(scopeURLs: scopeURLs,
+                         include: state.includeTags,
+                         exclude: state.excludeTags,
+                         runToken: runToken) {
+                return
+            }
+        } else if enumerateScopeContents(scopeURLs: scopeURLs, runToken: runToken) {
             return
         }
 
@@ -119,7 +125,9 @@ final class MetadataSearchController: ObservableObject {
                            runToken: UUID) -> Bool {
         guard !scopeURLs.isEmpty else { return false }
 
-        let arguments = buildMDFindArguments(scopeURLs: scopeURLs, include: include, exclude: exclude)
+        guard let arguments = buildMDFindArguments(scopeURLs: scopeURLs, include: include, exclude: exclude) else {
+            return false
+        }
         guard !arguments.isEmpty else { return false }
 
         isSearching = true
@@ -170,7 +178,7 @@ final class MetadataSearchController: ObservableObject {
                 let url = URL(fileURLWithPath: path)
                 let resourceValues = try? url.resourceValues(forKeys: [.localizedNameKey, .tagNamesKey])
                 let name = resourceValues?.localizedName ?? url.lastPathComponent
-                let tags = resourceValues?.tagNames ?? []
+                let tags = normalizedTags(from: resourceValues?.tagNames, url: url)
                 items.append(SearchResultItem(url: url, displayName: name, tags: tags))
             }
 
@@ -198,16 +206,92 @@ final class MetadataSearchController: ObservableObject {
 
     private func buildMDFindArguments(scopeURLs: [URL],
                                       include: Set<String>,
-                                      exclude: Set<String>) -> [String] {
-        guard !scopeURLs.isEmpty else { return [] }
+                                      exclude: Set<String>) -> [String]? {
+        guard !scopeURLs.isEmpty else { return nil }
+        guard let query = SpotlightTagQueryBuilder.queryString(include: include, exclude: exclude) else {
+            return nil
+        }
 
         var args: [String] = []
         for url in scopeURLs {
             args.append(contentsOf: ["-onlyin", url.path])
         }
 
-        args.append(SpotlightTagQueryBuilder.queryString(include: include, exclude: exclude))
+        args.append(query)
         return args
+    }
+
+    private func enumerateScopeContents(scopeURLs: [URL], runToken: UUID) -> Bool {
+        guard !scopeURLs.isEmpty else { return false }
+
+        isSearching = true
+        let resourceKeys: Set<URLResourceKey> = [.isRegularFileKey, .isDirectoryKey, .localizedNameKey, .tagNamesKey]
+        let fm = FileManager.default
+
+        fallbackQueue.async { [weak self] in
+            guard let self else { return }
+
+            var collected: [SearchResultItem] = []
+            collected.reserveCapacity(self.resultLimit)
+
+            scopeLoop: for scope in scopeURLs {
+                if collected.count >= self.resultLimit { break }
+
+                let scopeValues = try? scope.resourceValues(forKeys: resourceKeys)
+                if scopeValues?.isRegularFile == true {
+                    let name = scopeValues?.localizedName ?? scope.lastPathComponent
+                    let tags = self.normalizedTags(from: scopeValues?.tagNames, url: scope)
+                    collected.append(SearchResultItem(url: scope, displayName: name, tags: tags))
+                    continue
+                }
+
+                guard scopeValues?.isDirectory ?? true,
+                      let enumerator = fm.enumerator(at: scope,
+                                                     includingPropertiesForKeys: Array(resourceKeys),
+                                                     options: [.skipsHiddenFiles],
+                                                     errorHandler: nil) else {
+                    continue
+                }
+
+                for case let fileURL as URL in enumerator {
+                    if collected.count >= self.resultLimit {
+                        break scopeLoop
+                    }
+
+                    let values = try? fileURL.resourceValues(forKeys: resourceKeys)
+
+                    if values?.isDirectory == true {
+                        continue
+                    }
+
+                    let name = values?.localizedName ?? fileURL.lastPathComponent
+                    let tags = self.normalizedTags(from: values?.tagNames, url: fileURL)
+                    collected.append(SearchResultItem(url: fileURL, displayName: name, tags: tags))
+                }
+            }
+
+            DispatchQueue.main.async {
+                guard self.currentRunToken == runToken else { return }
+                self.results = collected
+                self.topFacets = self.facetCounter.topTags(from: collected)
+                self.isSearching = false
+                self.lastError = nil
+            }
+        }
+
+        return true
+    }
+
+    private func normalizedTags(from metadataTags: [String]?, url: URL) -> [String] {
+        if let tags = metadataTags?.filter({ !$0.isEmpty }), !tags.isEmpty {
+            return tags
+        }
+        if let resourceValues = try? url.resourceValues(forKeys: [.tagNamesKey]),
+           let tags = resourceValues.tagNames?.filter({ !$0.isEmpty }),
+           !tags.isEmpty {
+            return tags
+        }
+        return []
     }
 
     private func refreshFromQuery() {
@@ -224,7 +308,8 @@ final class MetadataSearchController: ObservableObject {
             guard let url = item.value(forAttribute: NSMetadataItemURLKey) as? URL else { continue }
             let name = (item.value(forAttribute: kMDItemFSName as String) as? String) ?? url.lastPathComponent
 
-            let tags = (item.value(forAttribute: SpotlightTagQueryBuilder.metadataUserTagsAttribute) as? [String]) ?? []
+            let metadataTags = item.value(forAttribute: SpotlightTagQueryBuilder.metadataUserTagsAttribute) as? [String]
+            let tags = normalizedTags(from: metadataTags, url: url)
 
             newResults.append(SearchResultItem(url: url, displayName: name, tags: tags))
         }
@@ -405,7 +490,7 @@ enum SpotlightTagQueryBuilder {
         return NSCompoundPredicate(andPredicateWithSubpredicates: predicates)
     }
 
-    static func queryString(include: Set<String>, exclude: Set<String>) -> String {
+    static func queryString(include: Set<String>, exclude: Set<String>) -> String? {
         var clauses: [String] = []
 
         for tag in include.sorted() {
@@ -416,10 +501,7 @@ enum SpotlightTagQueryBuilder {
             clauses.append("!(\(metadataUserTagsAttribute) == '\(escape(tag))')")
         }
 
-        if clauses.isEmpty {
-            return "TRUEPREDICATE"
-        }
-
+        guard !clauses.isEmpty else { return nil }
         return clauses.joined(separator: " && ")
     }
 

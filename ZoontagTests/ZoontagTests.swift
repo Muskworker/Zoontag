@@ -30,7 +30,7 @@ final class ZoontagTests: XCTestCase {
         XCTAssertEqual(query, "kMDItemUserTags == 'cat\\'s' && !(kMDItemUserTags == 'blue\\\\green')")
     }
 
-    func testMDFindQueryFallsBackToTruePredicateWhenEmpty() {
-        XCTAssertEqual(SpotlightTagQueryBuilder.queryString(include: [], exclude: []), "TRUEPREDICATE")
+    func testMDFindQueryIsNilWhenNoClauses() {
+        XCTAssertNil(SpotlightTagQueryBuilder.queryString(include: [], exclude: []))
     }
 }

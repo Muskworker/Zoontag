@@ -39,7 +39,7 @@ Important note: Spotlight does not provide “facets” natively, so facet count
 - scope: user-picked folders
 
 ## Spotlight fallback
-If `NSMetadataQuery` refuses to start even though indexing is available, Zoontag now falls back to invoking `/usr/bin/mdfind` with the same include/exclude tags and scopes, then hydrates tag facets from that output. This keeps searches functional while we continue investigating the underlying API failure.
+If `NSMetadataQuery` refuses to start even though indexing is available, Zoontag now falls back to invoking `/usr/bin/mdfind` with the same include/exclude tags and scopes, then hydrates tag facets from that output. When no tag filters are set, we enumerate the selected folders directly so users can still browse every file before refining.
 
 ## Next steps (likely Codex iteration plan)
 1) Swap icons for real thumbnails via `QuickLookThumbnailing`
