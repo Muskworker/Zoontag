@@ -7,9 +7,9 @@ final class ZoontagTests: XCTestCase {
         let baseURL = URL(fileURLWithPath: "/tmp")
 
         let results = [
-            SearchResultItem(url: baseURL.appending(path: "a.jpg"), displayName: "A", tags: ["cat", "blue"]),
-            SearchResultItem(url: baseURL.appending(path: "b.jpg"), displayName: "B", tags: ["cat", "green"]),
-            SearchResultItem(url: baseURL.appending(path: "c.jpg"), displayName: "C", tags: ["blue"]),
+            SearchResultItem(url: baseURL.appending(path: "a.jpg"), displayName: "A", tags: [FinderTag(name: "cat"), FinderTag(name: "blue")]),
+            SearchResultItem(url: baseURL.appending(path: "b.jpg"), displayName: "B", tags: [FinderTag(name: "cat", colorHex: "FF0000"), FinderTag(name: "green")]),
+            SearchResultItem(url: baseURL.appending(path: "c.jpg"), displayName: "C", tags: [FinderTag(name: "blue")]),
         ]
 
         let facets = counter.topTags(from: results, limit: 3, sample: nil)

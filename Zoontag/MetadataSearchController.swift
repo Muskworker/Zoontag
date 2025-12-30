@@ -1,6 +1,8 @@
 import Foundation
 import AppKit
 import Combine
+import CoreServices
+import Darwin
 
 final class MetadataSearchController: ObservableObject {
     @Published private(set) var results: [SearchResultItem] = []
@@ -183,7 +185,7 @@ final class MetadataSearchController: ObservableObject {
                 let url = URL(fileURLWithPath: path)
                 let resourceValues = try? url.resourceValues(forKeys: [.localizedNameKey, .tagNamesKey])
                 let name = resourceValues?.localizedName ?? url.lastPathComponent
-                let tags = normalizedTags(from: resourceValues?.tagNames, url: url)
+                let tags = normalizedTags(primaryTags: nil, fallbackTags: resourceValues?.tagNames, url: url)
                 items.append(SearchResultItem(url: url, displayName: name, tags: tags))
             }
 
@@ -245,7 +247,7 @@ final class MetadataSearchController: ObservableObject {
                 let scopeValues = try? scope.resourceValues(forKeys: resourceKeys)
                 if scopeValues?.isRegularFile == true {
                     let name = scopeValues?.localizedName ?? scope.lastPathComponent
-                    let tags = self.normalizedTags(from: scopeValues?.tagNames, url: scope)
+                    let tags = self.normalizedTags(primaryTags: nil, fallbackTags: scopeValues?.tagNames, url: scope)
                     collected.append(SearchResultItem(url: scope, displayName: name, tags: tags))
                     continue
                 }
@@ -270,7 +272,7 @@ final class MetadataSearchController: ObservableObject {
                     }
 
                     let name = values?.localizedName ?? fileURL.lastPathComponent
-                    let tags = self.normalizedTags(from: values?.tagNames, url: fileURL)
+                    let tags = self.normalizedTags(primaryTags: nil, fallbackTags: values?.tagNames, url: fileURL)
                     collected.append(SearchResultItem(url: fileURL, displayName: name, tags: tags))
                 }
             }
@@ -287,16 +289,92 @@ final class MetadataSearchController: ObservableObject {
         return true
     }
 
-    private func normalizedTags(from metadataTags: [String]?, url: URL) -> [String] {
-        if let tags = metadataTags?.filter({ !$0.isEmpty }), !tags.isEmpty {
-            return tags
+    private func normalizedTags(primaryTags: [String]?, fallbackTags: [String]? = nil, url: URL) -> [FinderTag] {
+        if let tags = primaryTags,
+           let parsed = parseFinderTags(from: tags) {
+            return parsed
         }
-        if let resourceValues = try? url.resourceValues(forKeys: [.tagNamesKey]),
-           let tags = resourceValues.tagNames?.filter({ !$0.isEmpty }),
-           !tags.isEmpty {
-            return tags
+
+        if let mdTags = finderMetadataTags(for: url),
+           let parsed = parseFinderTags(from: mdTags) {
+            return parsed
         }
+
+        if let fallback = fallbackTags,
+           let parsed = parseFinderTags(from: fallback) {
+            return parsed
+        }
+
+        if fallbackTags == nil,
+           let resourceValues = try? url.resourceValues(forKeys: [.tagNamesKey]),
+           let tagNames = resourceValues.tagNames,
+           let parsed = parseFinderTags(from: tagNames) {
+            return parsed
+        }
+
         return []
+    }
+
+    private func parseFinderTags(from rawValues: [String]) -> [FinderTag]? {
+        let parsed = rawValues.compactMap(FinderTag.init(rawValue:))
+        return parsed.isEmpty ? nil : parsed
+    }
+
+    private func finderMetadataTags(for url: URL) -> [String]? {
+        if let mdTags = mdItemTags(for: url) {
+            if mdTags.contains(where: { $0.contains("\n") }) {
+                return mdTags
+            }
+
+            if let xattrTags = extendedAttributeTags(for: url) {
+                return xattrTags
+            }
+
+            return mdTags
+        }
+
+        if let xattrTags = extendedAttributeTags(for: url) {
+            return xattrTags
+        }
+
+        return nil
+    }
+
+    private func mdItemTags(for url: URL) -> [String]? {
+        guard let item = MDItemCreateWithURL(kCFAllocatorDefault, url as CFURL) else {
+            return nil
+        }
+        let attribute = SpotlightTagQueryBuilder.metadataUserTagsAttribute as CFString
+        guard let values = MDItemCopyAttribute(item, attribute) as? [String], !values.isEmpty else {
+            return nil
+        }
+        return values
+    }
+
+    private func extendedAttributeTags(for url: URL) -> [String]? {
+        let attrName = "com.apple.metadata:_kMDItemUserTags"
+        return url.withUnsafeFileSystemRepresentation { fileSystemPath in
+            guard let path = fileSystemPath else { return nil }
+
+            let size = getxattr(path, attrName, nil, 0, 0, 0)
+            guard size > 0 else { return nil }
+
+            var data = Data(count: Int(size))
+            let readResult: Int = data.withUnsafeMutableBytes { rawBufferPointer in
+                guard let baseAddress = rawBufferPointer.baseAddress else { return -1 }
+                return getxattr(path, attrName, baseAddress, Int(size), 0, 0)
+            }
+
+            guard readResult >= 0 else { return nil }
+
+            guard let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
+                  let tags = plist as? [String],
+                  !tags.isEmpty else {
+                return nil
+            }
+
+            return tags
+        }
     }
 
     private func refreshFromQuery() {
@@ -314,7 +392,7 @@ final class MetadataSearchController: ObservableObject {
             let name = (item.value(forAttribute: kMDItemFSName as String) as? String) ?? url.lastPathComponent
 
             let metadataTags = item.value(forAttribute: SpotlightTagQueryBuilder.metadataUserTagsAttribute) as? [String]
-            let tags = normalizedTags(from: metadataTags, url: url)
+            let tags = normalizedTags(primaryTags: metadataTags, fallbackTags: nil, url: url)
 
             newResults.append(SearchResultItem(url: url, displayName: name, tags: tags))
         }

@@ -75,40 +75,68 @@ struct ContentView: View {
                             .foregroundStyle(.secondary)
                             .padding(.vertical, 4)
                     } else {
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 8) {
-                                ForEach(search.topFacets) { facet in
-                                    HStack(spacing: 10) {
-                                        Button {
-                                            include(tag: facet.tag)
-                                        } label: {
-                                            Image(systemName: "plus.circle.fill")
-                                                .foregroundStyle(.green)
+                        let groups = facetGroups(from: search.topFacets)
+                        VStack(alignment: .leading, spacing: 12) {
+                            ForEach(groups) { group in
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack(spacing: 8) {
+                                        if let color = colorFromHex(group.colorHex) {
+                                            Circle()
+                                                .fill(color)
+                                                .frame(width: 12, height: 12)
+                                        } else {
+                                            Circle()
+                                                .stroke(Color.gray.opacity(0.4), lineWidth: 1)
+                                                .frame(width: 12, height: 12)
                                         }
-                                        .buttonStyle(.plain)
-
-                                        Button {
-                                            exclude(tag: facet.tag)
-                                        } label: {
-                                            Image(systemName: "minus.circle.fill")
-                                                .foregroundStyle(.red)
-                                        }
-                                        .buttonStyle(.plain)
-
-                                        Text(facet.tag)
-                                            .lineLimit(1)
-
-                                        Spacer()
-                                        Text("\(facet.count)")
+                                        Text(colorLabel(for: group.colorHex))
+                                            .font(.subheadline)
                                             .foregroundStyle(.secondary)
-                                            .monospacedDigit()
+                                        Spacer()
                                     }
-                                    .contentShape(Rectangle())
-                                    .contextMenu {
-                                        Button("Include") { include(tag: facet.tag) }
-                                        Button("Exclude") { exclude(tag: facet.tag) }
+
+                                    LazyVStack(alignment: .leading, spacing: 6) {
+                                        ForEach(group.facets) { facet in
+                                            HStack(spacing: 10) {
+                                                Button {
+                                                    include(tag: facet.tag)
+                                                } label: {
+                                                    Image(systemName: "plus.circle.fill")
+                                                        .foregroundStyle(.green)
+                                                }
+                                                .buttonStyle(.plain)
+
+                                                Button {
+                                                    exclude(tag: facet.tag)
+                                                } label: {
+                                                    Image(systemName: "minus.circle.fill")
+                                                        .foregroundStyle(.red)
+                                                }
+                                                .buttonStyle(.plain)
+
+                                                if let color = colorFromHex(facet.colorHex) {
+                                                    Circle()
+                                                        .fill(color)
+                                                        .frame(width: 10, height: 10)
+                                                }
+
+                                                Text(facet.tag)
+                                                    .lineLimit(1)
+
+                                                Spacer()
+                                                Text("\(facet.count)")
+                                                    .foregroundStyle(.secondary)
+                                                    .monospacedDigit()
+                                            }
+                                            .contentShape(Rectangle())
+                                            .contextMenu {
+                                                Button("Include") { include(tag: facet.tag) }
+                                                Button("Exclude") { exclude(tag: facet.tag) }
+                                            }
+                                        }
                                     }
                                 }
+                                .padding(.vertical, 2)
                             }
                         }
                     }
@@ -170,7 +198,7 @@ struct ContentView: View {
                 .lineLimit(2)
 
             if !item.tags.isEmpty {
-                Text(item.tags.prefix(3).joined(separator: ", "))
+                Text(item.tagNames.prefix(3).joined(separator: ", "))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -209,14 +237,22 @@ struct ContentView: View {
                     Text("No tags.")
                         .foregroundStyle(.secondary)
                 } else {
-                    let columns = [GridItem(.adaptive(minimum: 100), spacing: 8, alignment: .leading)]
+                    let columns = [GridItem(.adaptive(minimum: 120), spacing: 8, alignment: .leading)]
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                        ForEach(item.tags, id: \.self) { tag in
-                            Text(tag)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(RoundedRectangle(cornerRadius: 10).fill(Color.gray.opacity(0.15)))
+                        ForEach(item.tags) { tag in
+                            HStack(spacing: 6) {
+                                if let color = colorFromHex(tag.colorHex) {
+                                    Circle()
+                                        .fill(color)
+                                        .frame(width: 10, height: 10)
+                                }
+                                Text(tag.name)
+                                    .lineLimit(1)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(RoundedRectangle(cornerRadius: 10).fill(Color.gray.opacity(0.15)))
                         }
                     }
                 }
@@ -300,5 +336,56 @@ struct ContentView: View {
                 }
             }
         }
+    }
+}
+
+private struct FacetGroup: Identifiable {
+    let key: String
+    let colorHex: String?
+    let facets: [TagFacet]
+    var id: String { key }
+}
+
+private extension ContentView {
+    func facetGroups(from facets: [TagFacet]) -> [FacetGroup] {
+        let grouped = Dictionary(grouping: facets) { ($0.colorHex?.lowercased()) ?? "none" }
+        let sortedKeys = grouped.keys.sorted(by: colorGroupSort)
+        return sortedKeys.compactMap { key in
+            guard let groupFacets = grouped[key] else { return nil }
+            let colorHex = key == "none" ? nil : groupFacets.first(where: { $0.colorHex != nil })?.colorHex
+            return FacetGroup(key: key, colorHex: colorHex, facets: groupFacets)
+        }
+    }
+
+    func colorGroupSort(_ lhs: String, _ rhs: String) -> Bool {
+        let lhsNone = lhs == "none"
+        let rhsNone = rhs == "none"
+        if lhsNone == rhsNone {
+            return lhs < rhs
+        }
+        return lhsNone ? false : true
+    }
+
+    func colorLabel(for hex: String?) -> String {
+        guard let normalized = normalizedHex(hex) else { return "No color" }
+        return "#\(normalized)"
+    }
+
+    func colorFromHex(_ hex: String?) -> Color? {
+        guard let normalized = normalizedHex(hex),
+              let value = Int(normalized, radix: 16) else { return nil }
+        let red = Double((value >> 16) & 0xFF) / 255.0
+        let green = Double((value >> 8) & 0xFF) / 255.0
+        let blue = Double(value & 0xFF) / 255.0
+        return Color(.sRGB, red: red, green: green, blue: blue, opacity: 1)
+    }
+
+    func normalizedHex(_ hex: String?) -> String? {
+        guard var hex = hex?.trimmingCharacters(in: .whitespacesAndNewlines), !hex.isEmpty else { return nil }
+        if hex.hasPrefix("#") {
+            hex.removeFirst()
+        }
+        guard hex.count == 6 else { return nil }
+        return hex.uppercased()
     }
 }

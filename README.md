@@ -14,6 +14,7 @@ Implemented:
 - Include/exclude tag sets drive the query
 - Results displayed as a grid (currently uses NSWorkspace file icons as thumbnails)
 - Facet sidebar shows top tags + counts derived from the current results
+- Finder tag colors are surfaced in the sidebar and grouped by color
 - Clicking + / – modifies the query state and re-runs search
 - Included/excluded tags shown as removable chips
 
