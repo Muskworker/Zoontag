@@ -368,7 +368,23 @@ private extension ContentView {
 
     func colorLabel(for hex: String?) -> String {
         guard let normalized = normalizedHex(hex) else { return "No color" }
+        if let name = colorName(for: normalized) {
+            return name
+        }
         return "#\(normalized)"
+    }
+
+    func colorName(for normalizedHex: String) -> String? {
+        let lookup: [String: String] = [
+            "8E8E93": "Gray",
+            "32D74B": "Green",
+            "BF5AF2": "Purple",
+            "0A84FF": "Blue",
+            "FFD60A": "Yellow",
+            "FF453A": "Red",
+            "FF9F0A": "Orange"
+        ]
+        return lookup[normalizedHex]
     }
 
     func colorFromHex(_ hex: String?) -> Color? {
