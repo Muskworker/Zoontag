@@ -1,5 +1,4 @@
 import Foundation
-import AppKit
 import Combine
 import CoreServices
 import Darwin
@@ -22,6 +21,18 @@ final class MetadataSearchController: ObservableObject {
     private var currentRunToken = UUID()
     private let fallbackQueue = DispatchQueue(label: "MetadataSearchController.mdfind", qos: .userInitiated)
     private var mdfindTask: Process?
+    private let isSandboxed: Bool = {
+        return ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+    }()
+    private lazy var metadataBackend = MetadataQueryBackend(controller: self)
+    private lazy var mdfindBackend = MDFindBackend(controller: self)
+    private lazy var enumerationBackend = EnumerationBackend(controller: self)
+
+    private enum SearchStrategy {
+        case metadataQuery
+        case mdfind
+        case enumerate
+    }
 
     deinit {
         stop()
@@ -48,57 +59,41 @@ final class MetadataSearchController: ObservableObject {
             return
         }
 
-        if enableMetadataQuery {
-            let q = NSMetadataQuery()
-            query = q
-
-            // Build predicate (nil == match all tags)
-            q.predicate = SpotlightTagQueryBuilder.predicate(include: state.includeTags, exclude: state.excludeTags)
-
-            // We’ll access URL, filename, and tags from attributes.
-            // (NSMetadataQuery returns NSMetadataItems; values are read via keys below.)
-            q.notificationBatchingInterval = 0.2
-
-            isSearching = true
-
-            let nc = NotificationCenter.default
-            observers.append(nc.addObserver(forName: .NSMetadataQueryDidFinishGathering, object: q, queue: .main) { [weak self] _ in
-                self?.refreshFromQuery()
-                self?.isSearching = false
-            })
-
-            observers.append(nc.addObserver(forName: .NSMetadataQueryDidUpdate, object: q, queue: .main) { [weak self] _ in
-                self?.refreshFromQuery()
-            })
-
-            let primaryScopes = scopeURLs.map { $0 as NSURL }
-            if startQuery(q, scopes: primaryScopes) {
+        let strategyList = strategies(hasTagFilters: hasTagFilters)
+        for strategy in strategyList {
+            if execute(strategy,
+                       state: state,
+                       scopeURLs: scopeURLs,
+                       runToken: runToken) {
                 return
             }
-
-            if let fallbackScopes = fallbackSearchScopes(for: scopeURLs),
-               startQuery(q, scopes: fallbackScopes) {
-                return
-            }
-
-            stop(releaseSecurityScopedResources: false)
-        } else {
-            stop(releaseSecurityScopedResources: false)
-        }
-
-        if hasTagFilters {
-            if runMDFind(scopeURLs: scopeURLs,
-                         include: state.includeTags,
-                         exclude: state.excludeTags,
-                         runToken: runToken) {
-                return
-            }
-        } else if enumerateScopeContents(scopeURLs: scopeURLs, runToken: runToken) {
-            return
         }
 
         stop()
-        lastError = spotlightFailureMessage(for: scopeURLs)
+        lastError = SpotlightDiagnostics.failureMessage(for: scopeURLs)
+    }
+
+    private func strategies(hasTagFilters: Bool) -> [SearchStrategy] {
+        var list: [SearchStrategy] = []
+        if enableMetadataQuery {
+            list.append(.metadataQuery)
+        }
+        list.append(hasTagFilters ? .mdfind : .enumerate)
+        return list
+    }
+
+    private func execute(_ strategy: SearchStrategy,
+                         state: QueryState,
+                         scopeURLs: [URL],
+                         runToken: UUID) -> Bool {
+        switch strategy {
+        case .metadataQuery:
+            return metadataBackend.start(state: state, scopeURLs: scopeURLs, runToken: runToken)
+        case .mdfind:
+            return mdfindBackend.start(state: state, scopeURLs: scopeURLs, runToken: runToken)
+        case .enumerate:
+            return enumerationBackend.start(state: state, scopeURLs: scopeURLs, runToken: runToken)
+        }
     }
 
     func stop(releaseSecurityScopedResources: Bool = true) {
@@ -114,6 +109,7 @@ final class MetadataSearchController: ObservableObject {
 
         fallbackQueue.async { [weak self] in
             guard let self else { return }
+            self.mdfindTask?.interrupt()
             self.mdfindTask?.terminate()
             self.mdfindTask = nil
         }
@@ -126,168 +122,6 @@ final class MetadataSearchController: ObservableObject {
         }
     }
 
-    private func runMDFind(scopeURLs: [URL],
-                           include: Set<String>,
-                           exclude: Set<String>,
-                           runToken: UUID) -> Bool {
-        guard !scopeURLs.isEmpty else { return false }
-
-        guard let arguments = buildMDFindArguments(scopeURLs: scopeURLs, include: include, exclude: exclude) else {
-            return false
-        }
-        guard !arguments.isEmpty else { return false }
-
-        isSearching = true
-
-        fallbackQueue.async { [weak self] in
-            guard let self else { return }
-
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
-            task.arguments = arguments
-
-            let pipe = Pipe()
-            task.standardOutput = pipe
-            task.standardError = pipe
-            self.mdfindTask = task
-
-            do {
-                try task.run()
-            } catch {
-                self.mdfindTask = nil
-                self.handleMDFindFailure("Failed to run mdfind: \(error.localizedDescription)", runToken: runToken)
-                return
-            }
-
-            task.waitUntilExit()
-            self.mdfindTask = nil
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let output = String(decoding: data, as: UTF8.self)
-
-            guard task.terminationStatus == 0 else {
-                let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
-                let detail = trimmed.isEmpty ? "" : " Details: \(trimmed)"
-                self.handleMDFindFailure("mdfind exited with code \(task.terminationStatus).\(detail)", runToken: runToken)
-                return
-            }
-
-            let lines = output.split(whereSeparator: \.isNewline)
-            var items: [SearchResultItem] = []
-            items.reserveCapacity(min(lines.count, self.resultLimit))
-
-            for line in lines {
-                if items.count >= self.resultLimit {
-                    break
-                }
-                let path = String(line)
-                guard !path.isEmpty else { continue }
-                let url = URL(fileURLWithPath: path)
-                let resourceValues = try? url.resourceValues(forKeys: [.localizedNameKey, .tagNamesKey])
-                let name = resourceValues?.localizedName ?? url.lastPathComponent
-                let tags = normalizedTags(primaryTags: nil, fallbackTags: resourceValues?.tagNames, url: url)
-                items.append(SearchResultItem(url: url, displayName: name, tags: tags))
-            }
-
-            DispatchQueue.main.async {
-                guard self.currentRunToken == runToken else { return }
-                self.results = items
-                self.topFacets = self.facetCounter.topTags(from: items)
-                self.isSearching = false
-                self.lastError = nil
-            }
-        }
-
-        return true
-    }
-
-    private func handleMDFindFailure(_ message: String, runToken: UUID) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.currentRunToken == runToken else { return }
-            self.results = []
-            self.topFacets = []
-            self.isSearching = false
-            self.lastError = message
-        }
-    }
-
-    private func buildMDFindArguments(scopeURLs: [URL],
-                                      include: Set<String>,
-                                      exclude: Set<String>) -> [String]? {
-        guard !scopeURLs.isEmpty else { return nil }
-        guard let query = SpotlightTagQueryBuilder.queryString(include: include, exclude: exclude) else {
-            return nil
-        }
-
-        var args: [String] = []
-        for url in scopeURLs {
-            args.append(contentsOf: ["-onlyin", url.path])
-        }
-
-        args.append(query)
-        return args
-    }
-
-    private func enumerateScopeContents(scopeURLs: [URL], runToken: UUID) -> Bool {
-        guard !scopeURLs.isEmpty else { return false }
-
-        isSearching = true
-        let resourceKeys: Set<URLResourceKey> = [.isRegularFileKey, .isDirectoryKey, .localizedNameKey, .tagNamesKey]
-        let fm = FileManager.default
-
-        fallbackQueue.async { [weak self] in
-            guard let self else { return }
-
-            var collected: [SearchResultItem] = []
-            collected.reserveCapacity(self.resultLimit)
-
-            scopeLoop: for scope in scopeURLs {
-                if collected.count >= self.resultLimit { break }
-
-                let scopeValues = try? scope.resourceValues(forKeys: resourceKeys)
-                if scopeValues?.isRegularFile == true {
-                    let name = scopeValues?.localizedName ?? scope.lastPathComponent
-                    let tags = self.normalizedTags(primaryTags: nil, fallbackTags: scopeValues?.tagNames, url: scope)
-                    collected.append(SearchResultItem(url: scope, displayName: name, tags: tags))
-                    continue
-                }
-
-                guard scopeValues?.isDirectory ?? true,
-                      let enumerator = fm.enumerator(at: scope,
-                                                     includingPropertiesForKeys: Array(resourceKeys),
-                                                     options: [.skipsHiddenFiles],
-                                                     errorHandler: nil) else {
-                    continue
-                }
-
-                for case let fileURL as URL in enumerator {
-                    if collected.count >= self.resultLimit {
-                        break scopeLoop
-                    }
-
-                    let values = try? fileURL.resourceValues(forKeys: resourceKeys)
-
-                    if values?.isDirectory == true {
-                        continue
-                    }
-
-                    let name = values?.localizedName ?? fileURL.lastPathComponent
-                    let tags = self.normalizedTags(primaryTags: nil, fallbackTags: values?.tagNames, url: fileURL)
-                    collected.append(SearchResultItem(url: fileURL, displayName: name, tags: tags))
-                }
-            }
-
-            DispatchQueue.main.async {
-                guard self.currentRunToken == runToken else { return }
-                self.results = collected
-                self.topFacets = self.facetCounter.topTags(from: collected)
-                self.isSearching = false
-                self.lastError = nil
-            }
-        }
-
-        return true
-    }
 
     private func normalizedTags(primaryTags: [String]?, fallbackTags: [String]? = nil, url: URL) -> [FinderTag] {
         if let tags = primaryTags,
@@ -313,6 +147,247 @@ final class MetadataSearchController: ObservableObject {
         }
 
         return []
+    }
+
+    private func makeResult(url: URL,
+                            preferredName: String? = nil,
+                            fallbackName: String? = nil,
+                            primaryTags: [String]? = nil,
+                            fallbackTags: [String]? = nil) -> SearchResultItem {
+        let displayName = preferredName ?? fallbackName ?? url.lastPathComponent
+        let tags = normalizedTags(primaryTags: primaryTags, fallbackTags: fallbackTags, url: url)
+        return SearchResultItem(url: url, displayName: displayName, tags: tags)
+    }
+
+    private protocol SearchBackend {
+        func start(state: QueryState, scopeURLs: [URL], runToken: UUID) -> Bool
+    }
+
+    private final class MetadataQueryBackend: SearchBackend {
+        weak var controller: MetadataSearchController?
+
+        init(controller: MetadataSearchController) {
+            self.controller = controller
+        }
+
+        func start(state: QueryState, scopeURLs: [URL], runToken: UUID) -> Bool {
+            guard let controller, controller.enableMetadataQuery else { return false }
+
+            let q = NSMetadataQuery()
+            controller.query = q
+            q.predicate = SpotlightTagQueryBuilder.predicate(include: state.includeTags, exclude: state.excludeTags)
+            q.notificationBatchingInterval = 0.2
+
+            controller.isSearching = true
+
+            let nc = NotificationCenter.default
+            controller.observers.append(nc.addObserver(forName: .NSMetadataQueryDidFinishGathering, object: q, queue: .main) { [weak controller] _ in
+                controller?.refreshFromQuery()
+                controller?.isSearching = false
+            })
+
+            controller.observers.append(nc.addObserver(forName: .NSMetadataQueryDidUpdate, object: q, queue: .main) { [weak controller] _ in
+                controller?.refreshFromQuery()
+            })
+
+            let primaryScopes = scopeURLs.map { $0 as NSURL }
+            if controller.startQuery(q, scopes: primaryScopes) {
+                return true
+            }
+
+            if let fallbackScopes = SpotlightDiagnostics.fallbackScopes(for: scopeURLs),
+               controller.startQuery(q, scopes: fallbackScopes) {
+                return true
+            }
+
+            controller.stop(releaseSecurityScopedResources: false)
+            return false
+        }
+    }
+
+    private final class MDFindBackend: SearchBackend {
+        weak var controller: MetadataSearchController?
+
+        init(controller: MetadataSearchController) {
+            self.controller = controller
+        }
+
+        func start(state: QueryState, scopeURLs: [URL], runToken: UUID) -> Bool {
+            guard let controller else { return false }
+            guard !scopeURLs.isEmpty else { return false }
+            guard let arguments = buildMDFindArguments(scopeURLs: scopeURLs,
+                                                       include: state.includeTags,
+                                                       exclude: state.excludeTags),
+                  !arguments.isEmpty else { return false }
+
+            controller.isSearching = true
+            let resourceKeys: Set<URLResourceKey> = [.localizedNameKey, .tagNamesKey]
+
+            controller.fallbackQueue.async { [weak self] in
+                guard let self, let controller = self.controller else { return }
+
+                let task = Process()
+                task.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
+                task.arguments = arguments
+
+                let pipe = Pipe()
+                task.standardOutput = pipe
+                task.standardError = pipe
+                controller.mdfindTask = task
+
+                do {
+                    try task.run()
+                } catch {
+                    controller.mdfindTask = nil
+                    self.handleFailure("Failed to run mdfind: \(error.localizedDescription)", runToken: runToken)
+                    return
+                }
+
+                task.waitUntilExit()
+                controller.mdfindTask = nil
+
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let output = String(decoding: data, as: UTF8.self)
+
+                guard task.terminationStatus == 0 else {
+                    let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let detail = trimmed.isEmpty ? "" : " Details: \(trimmed)"
+                    self.handleFailure("mdfind exited with code \(task.terminationStatus).\(detail)", runToken: runToken)
+                    return
+                }
+
+                let lines = output.split(whereSeparator: \.isNewline)
+                var items: [SearchResultItem] = []
+                items.reserveCapacity(min(lines.count, controller.resultLimit))
+
+                for line in lines {
+                    if items.count >= controller.resultLimit {
+                        break
+                    }
+                    let path = String(line)
+                    guard !path.isEmpty else { continue }
+                    let url = URL(fileURLWithPath: path)
+                    let resourceValues = try? url.resourceValues(forKeys: resourceKeys)
+                    let item = controller.makeResult(url: url,
+                                                     preferredName: resourceValues?.localizedName,
+                                                     primaryTags: nil,
+                                                     fallbackTags: resourceValues?.tagNames)
+                    items.append(item)
+                }
+
+                DispatchQueue.main.async {
+                    guard let controller = self.controller,
+                          controller.currentRunToken == runToken else { return }
+                    controller.results = items
+                    controller.topFacets = controller.facetCounter.topTags(from: items)
+                    controller.isSearching = false
+                    controller.lastError = nil
+                }
+            }
+
+            return true
+        }
+
+        private func buildMDFindArguments(scopeURLs: [URL],
+                                          include: Set<String>,
+                                          exclude: Set<String>) -> [String]? {
+            guard !scopeURLs.isEmpty else { return nil }
+            guard let query = SpotlightTagQueryBuilder.queryString(include: include, exclude: exclude) else {
+                return nil
+            }
+
+            var args: [String] = []
+            for url in scopeURLs {
+                args.append(contentsOf: ["-onlyin", url.path])
+            }
+
+            args.append(query)
+            return args
+        }
+
+        private func handleFailure(_ message: String, runToken: UUID) {
+            DispatchQueue.main.async { [weak controller] in
+                guard let controller, controller.currentRunToken == runToken else { return }
+                controller.results = []
+                controller.topFacets = []
+                controller.isSearching = false
+                controller.lastError = message
+            }
+        }
+    }
+
+    private final class EnumerationBackend: SearchBackend {
+        weak var controller: MetadataSearchController?
+
+        init(controller: MetadataSearchController) {
+            self.controller = controller
+        }
+
+        func start(state: QueryState, scopeURLs: [URL], runToken: UUID) -> Bool {
+            guard let controller else { return false }
+            guard !scopeURLs.isEmpty else { return false }
+
+            controller.isSearching = true
+            let resourceKeys: Set<URLResourceKey> = [.isRegularFileKey, .isDirectoryKey, .localizedNameKey, .tagNamesKey]
+            let fm = FileManager.default
+
+            controller.fallbackQueue.async { [weak self] in
+                guard let self, let controller = self.controller else { return }
+
+                var collected: [SearchResultItem] = []
+                collected.reserveCapacity(controller.resultLimit)
+
+                scopeLoop: for scope in scopeURLs {
+                    if collected.count >= controller.resultLimit { break }
+
+                    let scopeValues = try? scope.resourceValues(forKeys: resourceKeys)
+                    if scopeValues?.isRegularFile == true {
+                        let item = controller.makeResult(url: scope,
+                                                         preferredName: scopeValues?.localizedName,
+                                                         primaryTags: nil,
+                                                         fallbackTags: scopeValues?.tagNames)
+                        collected.append(item)
+                        continue
+                    }
+
+                    guard scopeValues?.isDirectory ?? true,
+                          let enumerator = fm.enumerator(at: scope,
+                                                         includingPropertiesForKeys: Array(resourceKeys),
+                                                         options: [.skipsHiddenFiles, .skipsPackageDescendants],
+                                                         errorHandler: nil) else {
+                        continue
+                    }
+
+                    for case let fileURL as URL in enumerator {
+                        if collected.count >= controller.resultLimit {
+                            break scopeLoop
+                        }
+
+                        let values = try? fileURL.resourceValues(forKeys: resourceKeys)
+                        if values?.isDirectory == true {
+                            continue
+                        }
+
+                        let item = controller.makeResult(url: fileURL,
+                                                         preferredName: values?.localizedName,
+                                                         primaryTags: nil,
+                                                         fallbackTags: values?.tagNames)
+                        collected.append(item)
+                    }
+                }
+
+                DispatchQueue.main.async {
+                    guard let controller = self.controller,
+                          controller.currentRunToken == runToken else { return }
+                    controller.results = collected
+                    controller.topFacets = controller.facetCounter.topTags(from: collected)
+                    controller.isSearching = false
+                    controller.lastError = nil
+                }
+            }
+
+            return true
+        }
     }
 
     private func parseFinderTags(from rawValues: [String]) -> [FinderTag]? {
@@ -389,12 +464,13 @@ final class MetadataSearchController: ObservableObject {
         // Cap for now to keep UI snappy; later we can paginate/infinite scroll.
         for item in items.prefix(resultLimit) {
             guard let url = item.value(forAttribute: NSMetadataItemURLKey) as? URL else { continue }
-            let name = (item.value(forAttribute: kMDItemFSName as String) as? String) ?? url.lastPathComponent
-
+            let name = (item.value(forAttribute: kMDItemFSName as String) as? String)
             let metadataTags = item.value(forAttribute: SpotlightTagQueryBuilder.metadataUserTagsAttribute) as? [String]
-            let tags = normalizedTags(primaryTags: metadataTags, fallbackTags: nil, url: url)
-
-            newResults.append(SearchResultItem(url: url, displayName: name, tags: tags))
+            let result = makeResult(url: url,
+                                    preferredName: name,
+                                    primaryTags: metadataTags,
+                                    fallbackTags: nil)
+            newResults.append(result)
         }
 
         results = newResults
@@ -403,22 +479,26 @@ final class MetadataSearchController: ObservableObject {
 
     @discardableResult
     private func beginSecurityScope(for urls: [URL]) -> [URL] {
-        var scopes: [URL] = []
+        var accessible: [URL] = []
 
-        // Release any prior scope access before starting new ones.
         for scopedURL in securityScopedURLs {
             scopedURL.stopAccessingSecurityScopedResource()
         }
         securityScopedURLs.removeAll()
 
+        if !isSandboxed {
+            securityScopedURLs = urls
+            return urls
+        }
+
         for url in urls {
             if url.startAccessingSecurityScopedResource() {
                 securityScopedURLs.append(url)
+                accessible.append(url)
             }
-            scopes.append(url)
         }
 
-        return scopes
+        return accessible
     }
 
     private func startQuery(_ query: NSMetadataQuery, scopes: [Any]) -> Bool {
@@ -427,170 +507,4 @@ final class MetadataSearchController: ObservableObject {
         return query.start()
     }
 
-    private func spotlightFailureMessage(for scopes: [URL]) -> String {
-        let desc = scopes.map(\.path).joined(separator: ", ")
-        let indexingSummary = summarizeSpotlightIndexing(for: scopes)
-
-        if indexingSummary.serverDisabled || (!indexingSummary.disabled.isEmpty && indexingSummary.enabled.isEmpty) {
-            return """
-            Failed to start Spotlight query for \(desc).
-            Spotlight indexing appears to be disabled. Open System Settings ▸ Siri & Spotlight or run `sudo mdutil -i on /` to enable indexing, then try again.
-            """
-        }
-
-        if !indexingSummary.disabled.isEmpty {
-            let disabledPaths = indexingSummary.disabled.map(\.path).joined(separator: ", ")
-            return """
-            Failed to start Spotlight query for \(desc).
-            Spotlight indexing is turned off for: \(disabledPaths).
-            Enable indexing for those folders in System Settings ▸ Siri & Spotlight or via `sudo mdutil -i on <path>`, then try again.
-            """
-        }
-
-        var message = """
-        Failed to start Spotlight query for \(desc).
-        Spotlight indexing looks enabled, so macOS likely denied Zoontag permission to read the selected folder. Re-pick it or grant Zoontag Full Disk Access (System Settings ▸ Privacy & Security ▸ Full Disk Access), then retry.
-        """
-
-        if !indexingSummary.unknown.isEmpty {
-            let unknownPaths = indexingSummary.unknown.map(\.0.path).joined(separator: ", ")
-            message += "\nCould not verify indexing for: \(unknownPaths)."
-        }
-
-        return message
-    }
-
-    private func fallbackSearchScopes(for urls: [URL]) -> [Any]? {
-        var scopes: [Any] = []
-        var addedFallback = false
-
-        for url in urls {
-            if url.isEntireDiskScope {
-                addedFallback = true
-                if !scopes.contains(where: { ($0 as? String) == NSMetadataQueryLocalComputerScope }) {
-                    scopes.append(NSMetadataQueryLocalComputerScope)
-                }
-            } else {
-                scopes.append(url.resolvingSymlinksInPath().path)
-            }
-        }
-
-        return addedFallback ? scopes : nil
-    }
-
-    private func summarizeSpotlightIndexing(for scopes: [URL]) -> SpotlightIndexingSummary {
-        var summary = SpotlightIndexingSummary()
-        let uniqueScopes = Array(Set(scopes.map { $0.resolvingSymlinksInPath() }))
-
-        for scope in uniqueScopes {
-            switch checkSpotlightIndexing(at: scope) {
-            case .enabled:
-                summary.enabled.append(scope)
-            case .disabled:
-                summary.disabled.append(scope)
-            case .serverDisabled:
-                summary.serverDisabled = true
-            case .unknown(let detail):
-                summary.unknown.append((scope, detail))
-            }
-        }
-
-        return summary
-    }
-
-    private func checkSpotlightIndexing(at scope: URL) -> SpotlightIndexingState {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/mdutil")
-        task.arguments = ["-s", scope.path]
-
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = pipe
-
-        do {
-            try task.run()
-        } catch {
-            return .unknown("mdutil failed: \(error.localizedDescription)")
-        }
-        task.waitUntilExit()
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let output = String(data: data, encoding: .utf8) else {
-            return .unknown(nil)
-        }
-
-        if output.localizedCaseInsensitiveContains("Spotlight server is disabled") {
-            return .serverDisabled
-        }
-        if output.localizedCaseInsensitiveContains("Indexing disabled") {
-            return .disabled
-        }
-        if output.localizedCaseInsensitiveContains("Indexing enabled") {
-            return .enabled
-        }
-
-        return .unknown(output.trimmingCharacters(in: .whitespacesAndNewlines))
-    }
-}
-
-private extension URL {
-    var isEntireDiskScope: Bool {
-        let resolvedPath = resolvingSymlinksInPath().standardizedFileURL.path
-        return resolvedPath == "/" || resolvedPath == "/System/Volumes/Data"
-    }
-}
-
-private struct SpotlightIndexingSummary {
-    var enabled: [URL] = []
-    var disabled: [URL] = []
-    var unknown: [(URL, String?)] = []
-    var serverDisabled: Bool = false
-}
-
-private enum SpotlightIndexingState {
-    case enabled
-    case disabled
-    case serverDisabled
-    case unknown(String?)
-}
-
-enum SpotlightTagQueryBuilder {
-    static let metadataUserTagsAttribute = "kMDItemUserTags"
-
-    static func predicate(include: Set<String>, exclude: Set<String>) -> NSPredicate? {
-        var predicates: [NSPredicate] = []
-
-        for tag in include.sorted() {
-            predicates.append(NSPredicate(format: "%K == %@", metadataUserTagsAttribute, tag))
-        }
-
-        for tag in exclude.sorted() {
-            let predicate = NSPredicate(format: "%K == %@", metadataUserTagsAttribute, tag)
-            predicates.append(NSCompoundPredicate(notPredicateWithSubpredicate: predicate))
-        }
-
-        guard !predicates.isEmpty else { return nil }
-        return NSCompoundPredicate(andPredicateWithSubpredicates: predicates)
-    }
-
-    static func queryString(include: Set<String>, exclude: Set<String>) -> String? {
-        var clauses: [String] = []
-
-        for tag in include.sorted() {
-            clauses.append("\(metadataUserTagsAttribute) == '\(escape(tag))'")
-        }
-
-        for tag in exclude.sorted() {
-            clauses.append("!(\(metadataUserTagsAttribute) == '\(escape(tag))')")
-        }
-
-        guard !clauses.isEmpty else { return nil }
-        return clauses.joined(separator: " && ")
-    }
-
-    private static func escape(_ tag: String) -> String {
-        var escaped = tag.replacingOccurrences(of: "\\", with: "\\\\")
-        escaped = escaped.replacingOccurrences(of: "'", with: "\\'")
-        return escaped
-    }
 }

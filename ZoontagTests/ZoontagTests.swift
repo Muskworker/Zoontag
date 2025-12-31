@@ -27,7 +27,7 @@ final class ZoontagTests: XCTestCase {
 
     func testMDFindQueryEscapesValues() {
         let query = SpotlightTagQueryBuilder.queryString(include: ["cat's"], exclude: ["blue\\green"])
-        XCTAssertEqual(query, "kMDItemUserTags == 'cat\\'s' && !(kMDItemUserTags == 'blue\\\\green')")
+        XCTAssertEqual(query, "kMDItemUserTags == 'cat\\'s*' && !(kMDItemUserTags == 'blue\\\\green*')")
     }
 
     func testMDFindQueryIsNilWhenNoClauses() {
