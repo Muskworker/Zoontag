@@ -4,11 +4,12 @@ import AppKit
 struct ContentView: View {
     @StateObject private var search = MetadataSearchController()
     @State private var state = QueryState()
+    @State private var columnVisibility: NavigationSplitViewVisibility = .doubleColumn
 
     @State private var selection: SearchResultItem? = nil
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
         } content: {
             mainGrid
@@ -17,6 +18,9 @@ struct ContentView: View {
         }
         .onChange(of: state) { _, newValue in
             search.run(state: newValue)
+        }
+        .onChange(of: selection) { _, newSelection in
+            columnVisibility = newSelection == nil ? .doubleColumn : .all
         }
         .onAppear {
             // Start blank; user chooses a folder.
@@ -174,6 +178,7 @@ struct ContentView: View {
                         resultCard(item)
                             .onTapGesture {
                                 selection = item
+                                columnVisibility = .all
                             }
                     }
                 }
@@ -274,6 +279,7 @@ struct ContentView: View {
             }
         }
         .padding()
+        .frame(minWidth: 320)
     }
 
     // MARK: - Tag ops
@@ -299,6 +305,7 @@ struct ContentView: View {
 
         if panel.runModal() == .OK, let url = panel.url {
             state.scopeURLs = [url]
+            selection = nil
         }
     }
 
