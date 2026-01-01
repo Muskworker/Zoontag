@@ -117,7 +117,7 @@ enum ThumbnailGenerator {
         let request = QLThumbnailGenerator.Request(fileAt: url,
                                                    size: size,
                                                    scale: scale,
-                                                   representationTypes: .icon)
+                                                   representationTypes: [.thumbnail, .icon])
         return await withCheckedContinuation { (continuation: CheckedContinuation<NSImage?, Never>) in
             generator.generateBestRepresentation(for: request) { representation, error in
                 guard let representation else {
