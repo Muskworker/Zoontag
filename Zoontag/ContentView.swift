@@ -212,10 +212,7 @@ struct ContentView: View {
         let isSelected = (selection?.id == item.id)
 
         return VStack(alignment: .leading, spacing: 8) {
-            Image(nsImage: item.iconImage(size: 96))
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(height: 96)
+            FileThumbnailView(url: item.url, maxDimension: 120)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 8)
 
@@ -253,6 +250,12 @@ struct ContentView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
+
+                Text("Preview")
+                    .font(.headline)
+
+                QuickLookPreviewContainer(url: item.url)
+                    .frame(maxHeight: 260)
 
                 Divider()
 
