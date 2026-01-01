@@ -14,6 +14,7 @@
 		168547A22F006AC200BC9972 /* QueryState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 168547A12F006AC200BC9972 /* QueryState.swift */; };
 		16A31FBE2F0A1235003D26A0 /* SpotlightDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16A31FBC2F0A1235003D26A0 /* SpotlightDiagnostics.swift */; };
 		16A31FC22F0A220B003D26A0 /* SpotlightTagQueryBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16A31FC12F0A220B003D26A0 /* SpotlightTagQueryBuilder.swift */; };
+		16C5ADF02F1A80000064F0A2 /* FinderTagEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16C5ADEF2F1A80000064F0A2 /* FinderTagEditor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -37,6 +38,7 @@
 		168547A12F006AC200BC9972 /* QueryState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = QueryState.swift; path = ../Zoontag/QueryState.swift; sourceTree = "<group>"; };
 		16A31FBC2F0A1235003D26A0 /* SpotlightDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SpotlightDiagnostics.swift; path = ../Zoontag/SpotlightDiagnostics.swift; sourceTree = "<group>"; };
 		16A31FC12F0A220B003D26A0 /* SpotlightTagQueryBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SpotlightTagQueryBuilder.swift; path = ../Zoontag/SpotlightTagQueryBuilder.swift; sourceTree = "<group>"; };
+		16C5ADEF2F1A80000064F0A2 /* FinderTagEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FinderTagEditor.swift; path = ../Zoontag/FinderTagEditor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -94,6 +96,7 @@
 				168547A12F006AC200BC9972 /* QueryState.swift */,
 				16A31FBC2F0A1235003D26A0 /* SpotlightDiagnostics.swift */,
 				16A31FC12F0A220B003D26A0 /* SpotlightTagQueryBuilder.swift */,
+				16C5ADEF2F1A80000064F0A2 /* FinderTagEditor.swift */,
 			);
 			path = ZoontagTests;
 			sourceTree = "<group>";
@@ -211,6 +214,7 @@
 			files = (
 				16A31FBE2F0A1235003D26A0 /* SpotlightDiagnostics.swift in Sources */,
 				16A31FC22F0A220B003D26A0 /* SpotlightTagQueryBuilder.swift in Sources */,
+				16C5ADF02F1A80000064F0A2 /* FinderTagEditor.swift in Sources */,
 				1685479A2F006A0000BC9972 /* FacetCounter.swift in Sources */,
 				168547A02F006AB900BC9972 /* MetadataSearchController.swift in Sources */,
 				168547A22F006AC200BC9972 /* QueryState.swift in Sources */,
