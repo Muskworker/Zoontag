@@ -255,7 +255,7 @@ struct ContentView: View {
                     .font(.headline)
 
                 QuickLookPreviewContainer(url: item.url)
-                    .frame(maxHeight: 260)
+                    .frame(maxHeight: dynamicPreviewHeight(for: item))
 
                 Divider()
 
@@ -537,6 +537,14 @@ struct ContentView: View {
                 }
             }
         }
+    }
+}
+
+extension ContentView {
+    private func dynamicPreviewHeight(for item: SearchResultItem) -> CGFloat {
+        let base: CGFloat = 320
+        let extra: CGFloat = CGFloat(item.tags.count) * 12
+        return min(max(base + extra, 320), 560)
     }
 }
 
