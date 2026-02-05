@@ -7,5 +7,8 @@ struct ZoontagApp: App {
             ContentView()
         }
         .windowStyle(.titleBar)
+        .commands {
+            CommandGroup(replacing: .sidebar) { }
+        }
     }
 }

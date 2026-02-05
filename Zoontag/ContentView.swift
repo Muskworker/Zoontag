@@ -4,7 +4,7 @@ import AppKit
 struct ContentView: View {
     @StateObject private var search = MetadataSearchController()
     @State private var state = QueryState()
-    @State private var columnVisibility: NavigationSplitViewVisibility = .doubleColumn
+    @State private var isDetailPaneVisible = true
     @State private var newTagName: String = ""
     @State private var newTagColor: FinderTagColorOption = .none
     @State private var tagEditError: String?
@@ -15,18 +15,22 @@ struct ContentView: View {
     @State private var selection: SearchResultItem? = nil
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        HSplitView {
             sidebar
-        } content: {
+                .frame(minWidth: 250, idealWidth: 300, maxWidth: 420)
+
             mainGrid
-        } detail: {
-            inspector
+                .frame(minWidth: 420, maxWidth: .infinity)
+
+            if isDetailPaneVisible {
+                inspector
+                    .frame(minWidth: 320, idealWidth: 360, maxWidth: 560)
+            }
         }
         .onChange(of: state) { _, newValue in
             search.run(state: newValue)
         }
         .onChange(of: selection) { _, newSelection in
-            columnVisibility = newSelection == nil ? .doubleColumn : .all
             if newSelection == nil {
                 newTagName = ""
                 tagEditError = nil
@@ -61,6 +65,14 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
 
                 Spacer()
+
+                Button {
+                    toggleDetailPane()
+                } label: {
+                    Image(systemName: "sidebar.right")
+                }
+                .help(isDetailPaneVisible ? "Hide Details" : "Show Details")
+                .accessibilityLabel(isDetailPaneVisible ? "Hide Details" : "Show Details")
 
                 // Simple “clear all” for fast iteration
                 Button("Clear Tags") {
@@ -199,7 +211,6 @@ struct ContentView: View {
                         resultCard(item)
                             .onTapGesture {
                                 selection = item
-                                columnVisibility = .all
                             }
                     }
                 }
@@ -501,6 +512,10 @@ struct ContentView: View {
             newTagName = ""
             setTagColor(.none, userInitiated: false)
         }
+    }
+
+    private func toggleDetailPane() {
+        isDetailPaneVisible.toggle()
     }
 
     // MARK: - Chip UI
