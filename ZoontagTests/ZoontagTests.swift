@@ -33,4 +33,56 @@ final class ZoontagTests: XCTestCase {
     func testMDFindQueryIsNilWhenNoClauses() {
         XCTAssertNil(SpotlightTagQueryBuilder.queryString(include: [], exclude: []))
     }
+
+    func testAutocompleteResolvedColorUsesExactMatchEvenAfterUserOverride() {
+        let catalog = [
+            "cat": TagAutocompleteEntry(id: "cat", displayName: "Cat", color: .red),
+        ]
+
+        let resolved = TagAutocompleteLogic.resolvedColor(for: "  cAt  ",
+                                                          in: catalog,
+                                                          userOverrodeColor: true)
+
+        XCTAssertEqual(resolved, .red)
+    }
+
+    func testAutocompleteResolvedColorClearsWhenNoMatchAndNoOverride() {
+        let catalog = [
+            "cat": TagAutocompleteEntry(id: "cat", displayName: "Cat", color: .red),
+        ]
+
+        let resolved = TagAutocompleteLogic.resolvedColor(for: "dog",
+                                                          in: catalog,
+                                                          userOverrodeColor: false)
+
+        XCTAssertEqual(resolved, FinderTagColorOption.none)
+    }
+
+    func testAutocompleteMovedHighlightedSuggestionWrapsBothDirections() {
+        let suggestions = [
+            TagAutocompleteEntry(id: "alpha", displayName: "Alpha", color: .none),
+            TagAutocompleteEntry(id: "beta", displayName: "Beta", color: .none),
+            TagAutocompleteEntry(id: "gamma", displayName: "Gamma", color: .none),
+        ]
+
+        let wrappedForward = TagAutocompleteLogic.movedHighlightedSuggestionID(in: suggestions,
+                                                                               currentID: "gamma",
+                                                                               delta: 1)
+        XCTAssertEqual(wrappedForward, "alpha")
+
+        let wrappedBackward = TagAutocompleteLogic.movedHighlightedSuggestionID(in: suggestions,
+                                                                                currentID: "alpha",
+                                                                                delta: -1)
+        XCTAssertEqual(wrappedBackward, "gamma")
+    }
+
+    func testAutocompleteAcceptedSuggestionFallsBackToFirstOption() {
+        let suggestions = [
+            TagAutocompleteEntry(id: "alpha", displayName: "Alpha", color: .blue),
+            TagAutocompleteEntry(id: "beta", displayName: "Beta", color: .green),
+        ]
+
+        let accepted = TagAutocompleteLogic.acceptedSuggestion(in: suggestions, highlightedID: nil)
+        XCTAssertEqual(accepted, suggestions.first)
+    }
 }

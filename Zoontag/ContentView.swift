@@ -11,6 +11,7 @@ struct ContentView: View {
     @State private var userOverrodeTagColor = false
     @State private var suppressTagColorChange = false
     @State private var isEditingTags = false
+    @State private var highlightedSuggestionID: String?
 
     @State private var selection: SearchResultItem? = nil
 
@@ -34,11 +35,18 @@ struct ContentView: View {
             if newSelection == nil {
                 newTagName = ""
                 tagEditError = nil
+                highlightedSuggestionID = nil
                 setTagColor(.none, userInitiated: false)
             }
         }
         .onChange(of: newTagName) { _, newValue in
             handleTagNameChange(newValue)
+        }
+        .onChange(of: search.results) { _, _ in
+            syncHighlightedSuggestion()
+        }
+        .onChange(of: search.topFacets) { _, _ in
+            syncHighlightedSuggestion()
         }
         .onChange(of: newTagColor) { _, _ in
             if suppressTagColorChange {
@@ -312,8 +320,18 @@ struct ContentView: View {
                     Text("Add Tag")
                         .font(.headline)
                     HStack(spacing: 8) {
-                        TextField("Tag name", text: $newTagName)
-                            .textFieldStyle(.roundedBorder)
+                        AutocompleteTagTextField(placeholder: "Tag name",
+                                                 text: $newTagName,
+                                                 onMoveUp: {
+                            moveSuggestionSelection(delta: -1)
+                        }, onMoveDown: {
+                            moveSuggestionSelection(delta: 1)
+                        }, onTabComplete: {
+                            acceptHighlightedSuggestion()
+                        }, onSubmit: {
+                            addTagToSelection()
+                            return true
+                        })
                             .frame(minWidth: 160)
 
                         Picker("Color", selection: $newTagColor) {
@@ -343,7 +361,8 @@ struct ContentView: View {
 
                     if !tagSuggestions.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
-                            ForEach(tagSuggestions) { entry in
+                            ForEach(Array(tagSuggestions.enumerated()), id: \.element.id) { _, entry in
+                                let isHighlighted = highlightedSuggestionID == entry.id
                                 Button {
                                     selectSuggestion(entry)
                                 } label: {
@@ -360,7 +379,12 @@ struct ContentView: View {
                                             .font(.footnote)
                                             .foregroundStyle(.secondary)
                                     }
+                                    .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(isHighlighted ? Color.accentColor.opacity(0.2) : Color.clear)
+                                    )
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -465,15 +489,12 @@ struct ContentView: View {
     }
 
     private func handleTagNameChange(_ value: String) {
-        let normalized = normalizedTagName(value)
-        guard !normalized.isEmpty else {
-            if !userOverrodeTagColor {
-                setTagColor(.none, userInitiated: false)
-            }
-            return
-        }
-        if !userOverrodeTagColor, let entry = tagCatalog[normalized] {
-            setTagColor(entry.color, userInitiated: false)
+        syncHighlightedSuggestion()
+
+        if let resolved = TagAutocompleteLogic.resolvedColor(for: value,
+                                                             in: tagCatalog,
+                                                             userOverrodeColor: userOverrodeTagColor) {
+            setTagColor(resolved, userInitiated: false)
         }
     }
 
@@ -492,9 +513,38 @@ struct ContentView: View {
         }
     }
 
-    private func selectSuggestion(_ entry: TagCatalogEntry) {
+    private func applySuggestion(_ entry: TagAutocompleteEntry) {
         newTagName = entry.displayName
+        highlightedSuggestionID = entry.id
         setTagColor(entry.color, userInitiated: false)
+    }
+
+    private func selectSuggestion(_ entry: TagAutocompleteEntry) {
+        applySuggestion(entry)
+    }
+
+    private func moveSuggestionSelection(delta: Int) -> Bool {
+        guard let id = TagAutocompleteLogic.movedHighlightedSuggestionID(in: tagSuggestions,
+                                                                         currentID: highlightedSuggestionID,
+                                                                         delta: delta) else {
+            return false
+        }
+        highlightedSuggestionID = id
+        return true
+    }
+
+    private func acceptHighlightedSuggestion() -> Bool {
+        guard let entry = TagAutocompleteLogic.acceptedSuggestion(in: tagSuggestions,
+                                                                  highlightedID: highlightedSuggestionID) else {
+            return false
+        }
+        applySuggestion(entry)
+        return true
+    }
+
+    private func syncHighlightedSuggestion() {
+        highlightedSuggestionID = TagAutocompleteLogic.preferredHighlightedSuggestionID(in: tagSuggestions,
+                                                                                        previousID: highlightedSuggestionID)
     }
 
     // MARK: - Folder picker
@@ -510,6 +560,7 @@ struct ContentView: View {
             state.scopeURLs = [url]
             selection = nil
             newTagName = ""
+            highlightedSuggestionID = nil
             setTagColor(.none, userInitiated: false)
         }
     }
@@ -555,6 +606,71 @@ struct ContentView: View {
     }
 }
 
+private struct AutocompleteTagTextField: NSViewRepresentable {
+    let placeholder: String
+    @Binding var text: String
+    let onMoveUp: () -> Bool
+    let onMoveDown: () -> Bool
+    let onTabComplete: () -> Bool
+    let onSubmit: () -> Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeNSView(context: Context) -> NSTextField {
+        let field = NSTextField(string: text)
+        field.placeholderString = placeholder
+        field.delegate = context.coordinator
+        field.isBezeled = true
+        field.isBordered = true
+        field.focusRingType = .default
+        field.bezelStyle = .roundedBezel
+        return field
+    }
+
+    func updateNSView(_ nsView: NSTextField, context: Context) {
+        if nsView.stringValue != text {
+            nsView.stringValue = text
+        }
+        if nsView.placeholderString != placeholder {
+            nsView.placeholderString = placeholder
+        }
+        context.coordinator.parent = self
+    }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: AutocompleteTagTextField
+
+        init(_ parent: AutocompleteTagTextField) {
+            self.parent = parent
+        }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let field = notification.object as? NSTextField else { return }
+            parent.text = field.stringValue
+        }
+
+        func control(_ control: NSControl,
+                     textView: NSTextView,
+                     doCommandBy commandSelector: Selector) -> Bool {
+            // Intercept navigation and completion keys so text entry can drive autocomplete.
+            switch commandSelector {
+            case #selector(NSResponder.moveUp(_:)):
+                return parent.onMoveUp()
+            case #selector(NSResponder.moveDown(_:)):
+                return parent.onMoveDown()
+            case #selector(NSResponder.insertTab(_:)):
+                return parent.onTabComplete()
+            case #selector(NSResponder.insertNewline(_:)):
+                return parent.onSubmit()
+            default:
+                return false
+            }
+        }
+    }
+}
+
 extension ContentView {
     private func dynamicPreviewHeight(for item: SearchResultItem) -> CGFloat {
         let base: CGFloat = 320
@@ -570,16 +686,10 @@ private struct FacetGroup: Identifiable {
     var id: String { key }
 }
 
-private struct TagCatalogEntry: Identifiable {
-    let id: String
-    let displayName: String
-    let color: FinderTagColorOption
-}
-
 private extension ContentView {
 
-    var tagCatalog: [String: TagCatalogEntry] {
-        var catalog: [String: TagCatalogEntry] = [:]
+    var tagCatalog: [String: TagAutocompleteEntry] {
+        var catalog: [String: TagAutocompleteEntry] = [:]
 
         func store(name: String, colorHex: String?) {
             let normalized = normalizedTagName(name)
@@ -587,10 +697,10 @@ private extension ContentView {
             let color = FinderTagColorOption.from(hex: colorHex)
             if let existing = catalog[normalized] {
                 if existing.color == .none && color != .none {
-                    catalog[normalized] = TagCatalogEntry(id: normalized, displayName: name, color: color)
+                    catalog[normalized] = TagAutocompleteEntry(id: normalized, displayName: name, color: color)
                 }
             } else {
-                catalog[normalized] = TagCatalogEntry(id: normalized, displayName: name, color: color)
+                catalog[normalized] = TagAutocompleteEntry(id: normalized, displayName: name, color: color)
             }
         }
 
@@ -607,7 +717,7 @@ private extension ContentView {
         return catalog
     }
 
-    var tagSuggestions: [TagCatalogEntry] {
+    var tagSuggestions: [TagAutocompleteEntry] {
         let query = normalizedTagName(newTagName)
         guard !query.isEmpty else { return [] }
 
@@ -619,7 +729,7 @@ private extension ContentView {
     }
 
     func normalizedTagName(_ name: String) -> String {
-        name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        TagAutocompleteLogic.normalizedName(name)
     }
 
     func facetGroups(from facets: [TagFacet]) -> [FacetGroup] {

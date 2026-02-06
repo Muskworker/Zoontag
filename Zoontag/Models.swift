@@ -120,7 +120,7 @@ struct FinderTag: Hashable, Identifiable {
     private static func hexValue(from descriptor: String) -> String? {
         guard !descriptor.isEmpty else { return nil }
 
-        var candidate = descriptor.trimmingCharacters(in: .whitespacesAndNewlines)
+        let candidate = descriptor.trimmingCharacters(in: .whitespacesAndNewlines)
         if candidate.isEmpty { return nil }
 
         if let normalized = normalizedHex(candidate) {
@@ -160,5 +160,75 @@ struct FinderTag: Hashable, Identifiable {
         let allowed = CharacterSet(charactersIn: "0123456789ABCDEFabcdef")
         guard hex.rangeOfCharacter(from: allowed.inverted) == nil else { return nil }
         return hex.uppercased()
+    }
+}
+
+struct TagAutocompleteEntry: Identifiable, Equatable {
+    let id: String
+    let displayName: String
+    let color: FinderTagColorOption
+}
+
+enum TagAutocompleteLogic {
+    static func normalizedName(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    static func exactMatch(for input: String,
+                           in catalog: [String: TagAutocompleteEntry]) -> TagAutocompleteEntry? {
+        catalog[normalizedName(input)]
+    }
+
+    static func resolvedColor(for input: String,
+                              in catalog: [String: TagAutocompleteEntry],
+                              userOverrodeColor: Bool) -> FinderTagColorOption? {
+        if let entry = exactMatch(for: input, in: catalog) {
+            return entry.color
+        }
+        if userOverrodeColor {
+            return nil
+        }
+        return FinderTagColorOption.none
+    }
+
+    static func preferredHighlightedSuggestionID(in suggestions: [TagAutocompleteEntry],
+                                                 previousID: String?) -> String? {
+        guard !suggestions.isEmpty else { return nil }
+        if let previousID,
+           suggestions.contains(where: { $0.id == previousID }) {
+            return previousID
+        }
+        return suggestions.first?.id
+    }
+
+    static func movedHighlightedSuggestionID(in suggestions: [TagAutocompleteEntry],
+                                             currentID: String?,
+                                             delta: Int) -> String? {
+        guard !suggestions.isEmpty else { return nil }
+        guard delta != 0 else {
+            return preferredHighlightedSuggestionID(in: suggestions, previousID: currentID)
+        }
+
+        if let currentID,
+           let index = suggestions.firstIndex(where: { $0.id == currentID }) {
+            let count = suggestions.count
+            let nextIndex = (index + delta % count + count) % count
+            return suggestions[nextIndex].id
+        }
+
+        if delta > 0 {
+            return suggestions.first?.id
+        }
+        return suggestions.last?.id
+    }
+
+    static func acceptedSuggestion(in suggestions: [TagAutocompleteEntry],
+                                   highlightedID: String?) -> TagAutocompleteEntry? {
+        guard !suggestions.isEmpty else { return nil }
+        if let highlightedID,
+           let match = suggestions.first(where: { $0.id == highlightedID }) {
+            return match
+        }
+        return suggestions.first
     }
 }
