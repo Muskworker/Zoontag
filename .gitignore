@@ -1,2 +1,18 @@
-.build/
+# macOS
 .DS_Store
+
+# Swift / SPM
+.build/
+.swiftpm/
+
+# Xcode user and build artifacts
+DerivedData/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcuserdatad/
+*.xcuserstate
+
+# Test and coverage artifacts
+*.xccovreport
+*.xccovarchive
+*.xcresult
