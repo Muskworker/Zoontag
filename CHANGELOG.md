@@ -21,6 +21,6 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Expanded `.gitignore` for Xcode/macOS and test artifacts.
 - Stopped tracking user-specific Xcode workspace files (`xcuserdata` and breakpoints).
 - Refactored README for end-user and developer onboarding.
-- Clarified README "Get Zoontag" instructions so source build is the default path and release ZIP install is optional when assets are published.
+- Clarified README "Get Zoontag" instructions so source build is the default path, release ZIP install is optional when assets are published, and unsigned-app launch guidance matches the current macOS `Open Anyway` flow.
 - Lowered `MACOSX_DEPLOYMENT_TARGET` to `14.0` so GitHub Actions `macos-14` runners can build and test successfully.
 - Updated GitHub Actions workflows to run on `macos-latest` and select the latest stable Xcode before test/package steps.

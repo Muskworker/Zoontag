@@ -21,7 +21,12 @@ Optional prebuilt package (when available on a tagged release):
 3. Unzip and move `Zoontag.app` to `/Applications`.
 4. Launch Zoontag.
 
-If macOS warns because the app is unsigned, right-click the app, choose **Open**, then confirm.
+If macOS blocks launch because the app is unsigned:
+1. Try to open `Zoontag.app` once, then dismiss the warning.
+2. Open `System Settings > Privacy & Security`.
+3. In the Security section, click **Open Anyway** for Zoontag and confirm.
+
+Apple notes that **Open Anyway** is available for about one hour after the blocked launch attempt.
 
 ### How to Use
 1. Choose a folder to search.
