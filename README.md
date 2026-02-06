@@ -1,66 +1,71 @@
 # Zoontag
 
-A tag-first file browser for macOS that behaves like a booru:
-- results are a grid
-- the sidebar shows the most common tags *within the current result set*
-- each tag has quick boolean refinement buttons: include (+) / exclude (–)
+Zoontag is a macOS tag-first file browser. It uses Finder tags and Spotlight to let you drill into files quickly without maintaining a separate media database.
 
-The key constraint: **use the filesystem + native Finder tags (Spotlight)**, not a separate imported library/database.
+## For End Users
 
-## Current status (minimal spine)
-Implemented:
-- Choose a root folder (NSOpenPanel)
-- Query files via Spotlight (`NSMetadataQuery`) scoped to chosen folders
-- Include/exclude tag sets drive the query
-- Results displayed as a grid (currently uses NSWorkspace file icons as thumbnails)
-- Facet sidebar shows top tags + counts derived from the current results
-- Finder tag colors are surfaced in the sidebar and grouped by color
-- Clicking + / – modifies the query state and re-runs search
-- Included/excluded tags shown as removable chips
+### Requirements
+- macOS 14 or later
 
-Not implemented yet:
-- Real thumbnails (QuickLookThumbnailing)
-- Preview pane (QuickLook)
-- Multi-folder scopes and persistent bookmarks
-- OR groups / parentheses / advanced boolean
-- Text search, type filters, date filters
-- Batch tagging UI
+### Get Zoontag
+Preferred:
 
-## Architecture
-- `QueryState`: the source of truth (include/exclude tags + search scopes)
-- `MetadataSearchController`: runs Spotlight queries and publishes results
-- `FacetCounter`: computes tag frequency over current results for the sidebar
-- SwiftUI UI binds to `QueryState` and calls search controller on changes
+1. Open the repository's GitHub **Releases** page.
+2. Download `Zoontag-macOS.zip`.
+3. Unzip and move `Zoontag.app` to `Applications`.
+4. Launch Zoontag.
 
-Important note: Spotlight does not provide “facets” natively, so facet counts are computed client-side from the query results.
+If macOS warns because the app is unsigned, right-click the app, choose **Open**, then confirm.
 
-## How Spotlight query is built
-- include tags: AND chain of `kMDItemUserTags == <tag>`
-- exclude tags: AND chain of `NOT (kMDItemUserTags == <tag>)`
-- scope: user-picked folders
+From source:
 
-## Spotlight fallback
-If `NSMetadataQuery` refuses to start even though indexing is available, Zoontag now falls back to invoking `/usr/bin/mdfind` with the same include/exclude tags and scopes, then hydrates tag facets from that output. When no tag filters are set, we enumerate the selected folders directly so users can still browse every file before refining.
+1. Download this repository (or clone it).
+2. Open `Zoontag.xcodeproj` in Xcode.
+3. Run the `Zoontag` scheme.
 
-## Next steps (likely Codex iteration plan)
-1) Swap icons for real thumbnails via `QuickLookThumbnailing`
-2) Incremental / cancelable facet counting (and/or sampling)
-3) Preview panel for selected file
-4) Batch tag edit for selected results
-5) Persist scopes via security-scoped bookmarks (sandbox-friendly)
-6) Add OR groups (booru-style “(tagA OR tagB)”)
+### How to Use
+1. Choose a folder to search.
+2. Browse matching files in the grid.
+3. Use sidebar tag controls to refine:
+   - `+` include a tag
+   - `-` exclude a tag
+4. Remove active tag chips to widen results.
 
-## Notes for sandboxing
-Zoontag currently ships with the App Sandbox disabled so Spotlight queries can traverse arbitrary Finder scopes without security-scoped bookmarks. Re-enable the sandbox only after we persist bookmarks and request scopes per the checklist below.
+### Current Capabilities
+- Finder-tag search via Spotlight (`NSMetadataQuery`)
+- Include/exclude boolean filtering on tags
+- Sidebar facets computed from the current result set
+- Fallback to `mdfind` and filesystem enumeration when needed
 
-If we sandbox later, we should:
-- persist user-selected folders as security-scoped bookmarks
-- startAccessingSecurityScopedResource when querying/opening files
-- handle Spotlight returning items outside accessible scopes gracefully
+## For Developers
 
-## Design north star
-The “booru loop” must be frictionless:
-- see results
-- see top tags in results
-- click + / – repeatedly
-- never get lost in folder hierarchies
+### Requirements
+- macOS 14 or later
+- Xcode 15 or later
+
+### Setup
+```bash
+git clone <repository-url>
+cd Zoontag
+open Zoontag.xcodeproj
+```
+
+### Build and Test
+```bash
+xcodebuild build -scheme Zoontag -configuration Debug
+xcodebuild test -scheme Zoontag -destination 'platform=macOS' -derivedDataPath "$(pwd)/.build/DerivedData"
+```
+
+### Build Release Package
+```bash
+./scripts/package_release.sh
+```
+
+To publish a packaged download on GitHub Releases, push a `v*` tag (for example `v1.0.0`).
+
+### More Docs
+- Contributor workflow: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Agent-specific guidance: [AGENTS.md](AGENTS.md)
+
+## License
+This project is licensed under the [MIT License](LICENSE).

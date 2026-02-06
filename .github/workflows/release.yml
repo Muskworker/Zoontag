@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package-macos-app:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build release package
+        run: ./scripts/package_release.sh
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zoontag-macos-package
+          path: |
+            .build/release/Zoontag-macOS.zip
+            .build/release/Zoontag-macOS.zip.sha256
+
+      - name: Attach package to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            .build/release/Zoontag-macOS.zip
+            .build/release/Zoontag-macOS.zip.sha256
