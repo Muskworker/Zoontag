@@ -169,6 +169,63 @@ struct TagAutocompleteEntry: Identifiable, Equatable {
     let color: FinderTagColorOption
 }
 
+struct SelectionTagSummary: Identifiable, Equatable {
+    let normalizedName: String
+    let displayName: String
+    let colorHex: String?
+    let count: Int
+
+    var id: String { normalizedName }
+}
+
+enum SelectionTagSummaryBuilder {
+    static func build(from items: [SearchResultItem]) -> [SelectionTagSummary] {
+        struct Bucket {
+            var displayName: String
+            var colorHex: String?
+            var itemIDs: Set<SearchResultItem.ID>
+        }
+
+        var buckets: [String: Bucket] = [:]
+
+        for item in items {
+            var seenInItem: Set<String> = []
+
+            for tag in item.tags {
+                let normalizedName = TagAutocompleteLogic.normalizedName(tag.name)
+                guard !normalizedName.isEmpty else { continue }
+                guard seenInItem.insert(normalizedName).inserted else { continue }
+
+                let normalizedColor = FinderTag.normalizedHex(tag.colorHex)
+
+                if var existing = buckets[normalizedName] {
+                    existing.itemIDs.insert(item.id)
+                    // Prefer any explicit color over "no color" when available.
+                    if existing.colorHex == nil, let normalizedColor {
+                        existing.colorHex = normalizedColor
+                        existing.displayName = tag.name
+                    }
+                    buckets[normalizedName] = existing
+                } else {
+                    buckets[normalizedName] = Bucket(displayName: tag.name,
+                                                     colorHex: normalizedColor,
+                                                     itemIDs: [item.id])
+                }
+            }
+        }
+
+        return buckets.map { key, bucket in
+            SelectionTagSummary(normalizedName: key,
+                                displayName: bucket.displayName,
+                                colorHex: bucket.colorHex,
+                                count: bucket.itemIDs.count)
+        }
+        .sorted {
+            $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+        }
+    }
+}
+
 enum TagAutocompleteLogic {
     static func normalizedName(_ name: String) -> String {
         name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
