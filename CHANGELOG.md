@@ -22,3 +22,4 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Stopped tracking user-specific Xcode workspace files (`xcuserdata` and breakpoints).
 - Refactored README for end-user and developer onboarding.
 - Lowered `MACOSX_DEPLOYMENT_TARGET` to `14.0` so GitHub Actions `macos-14` runners can build and test successfully.
+- Updated GitHub Actions workflows to run on `macos-latest` and select the latest stable Xcode before test/package steps.
