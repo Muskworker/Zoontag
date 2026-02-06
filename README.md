@@ -8,20 +8,25 @@ Zoontag is a macOS tag-first file browser. It uses Finder tags and Spotlight to 
 - macOS 14 or later
 
 ### Get Zoontag
-Preferred:
-
-1. Open the repository's GitHub **Releases** page.
-2. Download `Zoontag-macOS.zip`.
-3. Unzip and move `Zoontag.app` to `Applications`.
-4. Launch Zoontag.
-
-If macOS warns because the app is unsigned, right-click the app, choose **Open**, then confirm.
-
-From source:
+Current path (always available):
 
 1. Download this repository (or clone it).
 2. Open `Zoontag.xcodeproj` in Xcode.
 3. Run the `Zoontag` scheme.
+
+Optional prebuilt package (when available on a tagged release):
+
+1. Open the repository's GitHub **Releases** page.
+2. Download `Zoontag-macOS.zip`.
+3. Unzip and move `Zoontag.app` to `/Applications`.
+4. Launch Zoontag.
+
+If macOS blocks launch because the app is unsigned:
+1. Try to open `Zoontag.app` once, then dismiss the warning.
+2. Open `System Settings > Privacy & Security`.
+3. In the Security section, click **Open Anyway** for Zoontag and confirm.
+
+Apple notes that **Open Anyway** is available for about one hour after the blocked launch attempt.
 
 ### How to Use
 1. Choose a folder to search.
