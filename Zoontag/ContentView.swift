@@ -5,6 +5,8 @@ struct ContentView: View {
     @StateObject private var search = MetadataSearchController()
     @State private var state = QueryState()
     @State private var isDetailPaneVisible = true
+    @State private var queryTagName: String = ""
+    @State private var highlightedQuerySuggestionID: String?
     @State private var newTagName: String = ""
     @State private var newTagColor: FinderTagColorOption = .none
     @State private var tagEditError: String?
@@ -42,11 +44,16 @@ struct ContentView: View {
         .onChange(of: newTagName) { _, newValue in
             handleTagNameChange(newValue)
         }
+        .onChange(of: queryTagName) { _, _ in
+            syncQueryHighlightedSuggestion()
+        }
         .onChange(of: search.results) { _, _ in
             syncHighlightedSuggestion()
+            syncQueryHighlightedSuggestion()
         }
         .onChange(of: search.topFacets) { _, _ in
             syncHighlightedSuggestion()
+            syncQueryHighlightedSuggestion()
         }
         .onChange(of: newTagColor) { _, _ in
             if suppressTagColorChange {
@@ -99,6 +106,86 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 12) {
                 GroupBox("Query") {
                     VStack(alignment: .leading, spacing: 8) {
+                        Text("Find tag")
+                            .font(.headline)
+
+                        HStack(spacing: 6) {
+                            AutocompleteTagTextField(placeholder: "Tag name",
+                                                     text: $queryTagName,
+                                                     onMoveUp: {
+                                moveQuerySuggestionSelection(delta: -1)
+                            }, onMoveDown: {
+                                moveQuerySuggestionSelection(delta: 1)
+                            }, onTabComplete: {
+                                acceptHighlightedQuerySuggestion()
+                            }, onSubmit: {
+                                includeTypedTagInQuery()
+                                return true
+                            })
+                                .frame(minWidth: 130)
+
+                            Button {
+                                includeTypedTagInQuery()
+                            } label: {
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundStyle(.green)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Include tag")
+                            .disabled(!canApplyTypedTagToQuery)
+
+                            Button {
+                                excludeTypedTagFromQuery()
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                                    .foregroundStyle(.red)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Exclude tag")
+                            .disabled(!canApplyTypedTagToQuery)
+
+                            Button {
+                                removeTypedTagFromQuery()
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Remove tag from query")
+                            .disabled(!canRemoveTypedTagFromQuery)
+                        }
+
+                        if !queryTagSuggestions.isEmpty {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(queryTagSuggestions) { entry in
+                                    let isHighlighted = highlightedQuerySuggestionID == entry.id
+                                    Button {
+                                        selectQuerySuggestion(entry)
+                                    } label: {
+                                        HStack(spacing: 8) {
+                                            if let hex = entry.color.hexValue,
+                                               let color = colorFromHex(hex) {
+                                                Circle()
+                                                    .fill(color)
+                                                    .frame(width: 8, height: 8)
+                                            }
+                                            Text(entry.displayName)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .fill(isHighlighted ? Color.accentColor.opacity(0.2) : Color.clear)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(8)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.15)))
+                        }
+
                         tagChips(title: "Include", tags: Array(state.includeTags).sorted(), tint: .green) { tag in
                             state.includeTags.remove(tag)
                         }
@@ -440,6 +527,30 @@ struct ContentView: View {
         state.excludeTags.insert(tag)
     }
 
+    private func includeTypedTagInQuery() {
+        guard let tag = resolvedQueryTagName else { return }
+        include(tag: tag)
+        queryTagName = ""
+        highlightedQuerySuggestionID = nil
+    }
+
+    private func excludeTypedTagFromQuery() {
+        guard let tag = resolvedQueryTagName else { return }
+        exclude(tag: tag)
+        queryTagName = ""
+        highlightedQuerySuggestionID = nil
+    }
+
+    private func removeTypedTagFromQuery() {
+        guard let normalized = normalizedQueryTagName else { return }
+
+        state.includeTags = Set(state.includeTags.filter { normalizedTagName($0) != normalized })
+        state.excludeTags = Set(state.excludeTags.filter { normalizedTagName($0) != normalized })
+
+        queryTagName = ""
+        highlightedQuerySuggestionID = nil
+    }
+
     private func addTagToSelection() {
         guard let target = selection?.url else { return }
         let trimmed = newTagName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -545,6 +656,35 @@ struct ContentView: View {
     private func syncHighlightedSuggestion() {
         highlightedSuggestionID = TagAutocompleteLogic.preferredHighlightedSuggestionID(in: tagSuggestions,
                                                                                         previousID: highlightedSuggestionID)
+    }
+
+    private func selectQuerySuggestion(_ entry: TagAutocompleteEntry) {
+        queryTagName = entry.displayName
+        highlightedQuerySuggestionID = entry.id
+    }
+
+    private func moveQuerySuggestionSelection(delta: Int) -> Bool {
+        guard let id = TagAutocompleteLogic.movedHighlightedSuggestionID(in: queryTagSuggestions,
+                                                                         currentID: highlightedQuerySuggestionID,
+                                                                         delta: delta) else {
+            return false
+        }
+        highlightedQuerySuggestionID = id
+        return true
+    }
+
+    private func acceptHighlightedQuerySuggestion() -> Bool {
+        guard let entry = TagAutocompleteLogic.acceptedSuggestion(in: queryTagSuggestions,
+                                                                  highlightedID: highlightedQuerySuggestionID) else {
+            return false
+        }
+        selectQuerySuggestion(entry)
+        return true
+    }
+
+    private func syncQueryHighlightedSuggestion() {
+        highlightedQuerySuggestionID = TagAutocompleteLogic.preferredHighlightedSuggestionID(in: queryTagSuggestions,
+                                                                                             previousID: highlightedQuerySuggestionID)
     }
 
     // MARK: - Folder picker
@@ -688,6 +828,41 @@ private struct FacetGroup: Identifiable {
 
 private extension ContentView {
 
+    var canApplyTypedTagToQuery: Bool {
+        normalizedQueryTagName != nil
+    }
+
+    var canRemoveTypedTagFromQuery: Bool {
+        guard let normalized = normalizedQueryTagName else { return false }
+        return state.includeTags.contains { normalizedTagName($0) == normalized }
+            || state.excludeTags.contains { normalizedTagName($0) == normalized }
+    }
+
+    var normalizedQueryTagName: String? {
+        let normalized = normalizedTagName(queryTagName)
+        return normalized.isEmpty ? nil : normalized
+    }
+
+    var resolvedQueryTagName: String? {
+        let trimmed = queryTagName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if let exact = TagAutocompleteLogic.exactMatch(for: trimmed, in: tagCatalog) {
+            return exact.displayName
+        }
+
+        if let normalized = normalizedQueryTagName {
+            if let includeMatch = state.includeTags.first(where: { normalizedTagName($0) == normalized }) {
+                return includeMatch
+            }
+            if let excludeMatch = state.excludeTags.first(where: { normalizedTagName($0) == normalized }) {
+                return excludeMatch
+            }
+        }
+
+        return trimmed
+    }
+
     var tagCatalog: [String: TagAutocompleteEntry] {
         var catalog: [String: TagAutocompleteEntry] = [:]
 
@@ -718,14 +893,11 @@ private extension ContentView {
     }
 
     var tagSuggestions: [TagAutocompleteEntry] {
-        let query = normalizedTagName(newTagName)
-        guard !query.isEmpty else { return [] }
+        TagAutocompleteLogic.suggestions(for: newTagName, in: tagCatalog, limit: 5)
+    }
 
-        return tagCatalog.values
-            .filter { $0.displayName.lowercased().contains(query) && $0.displayName.caseInsensitiveCompare(newTagName) != .orderedSame }
-            .sorted { $0.displayName < $1.displayName }
-            .prefix(5)
-            .map { $0 }
+    var queryTagSuggestions: [TagAutocompleteEntry] {
+        TagAutocompleteLogic.suggestions(for: queryTagName, in: tagCatalog, limit: 5)
     }
 
     func normalizedTagName(_ name: String) -> String {

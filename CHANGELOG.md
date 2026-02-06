@@ -26,3 +26,4 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Updated GitHub Actions workflows to run on `macos-latest` and select the latest stable Xcode before test/package steps.
 - Fixed tag editor autocomplete so exact typed tag names consistently apply known Finder colors.
 - Added keyboard autocomplete controls in tag editor (`Up`/`Down` to navigate suggestions, `Tab` to accept).
+- Added a left-sidebar query tag input with autosuggestions so users can include, exclude, or remove tags even when they are not present in top facets.
