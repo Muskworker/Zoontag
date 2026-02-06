@@ -30,6 +30,11 @@ final class ZoontagTests: XCTestCase {
         XCTAssertEqual(query, "kMDItemUserTags == 'cat\\'s*' && !(kMDItemUserTags == 'blue\\\\green*')")
     }
 
+    func testMDFindQuerySupportsExcludeOnlyFilters() {
+        let query = SpotlightTagQueryBuilder.queryString(include: [], exclude: ["untagged"])
+        XCTAssertEqual(query, "!(kMDItemUserTags == 'untagged*')")
+    }
+
     func testMDFindQueryIsNilWhenNoClauses() {
         XCTAssertNil(SpotlightTagQueryBuilder.queryString(include: [], exclude: []))
     }

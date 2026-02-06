@@ -20,6 +20,7 @@ final class MetadataSearchController: ObservableObject {
     private var securityScopedURLs: [URL] = []
     private var currentRunToken = UUID()
     private let fallbackQueue = DispatchQueue(label: "MetadataSearchController.mdfind", qos: .userInitiated)
+    private let mdfindTaskLock = NSLock()
     private var mdfindTask: Process?
     private let isSandboxed: Bool = {
         return ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
@@ -107,12 +108,7 @@ final class MetadataSearchController: ObservableObject {
         observers.removeAll()
         isSearching = false
 
-        fallbackQueue.async { [weak self] in
-            guard let self else { return }
-            self.mdfindTask?.interrupt()
-            self.mdfindTask?.terminate()
-            self.mdfindTask = nil
-        }
+        cancelMDFindTask()
 
         if releaseSecurityScopedResources {
             for scopedURL in securityScopedURLs {
@@ -120,6 +116,28 @@ final class MetadataSearchController: ObservableObject {
             }
             securityScopedURLs.removeAll()
         }
+    }
+
+    private func cancelMDFindTask() {
+        let task = withMDFindTaskLock { () -> Process? in
+            defer { mdfindTask = nil }
+            return mdfindTask
+        }
+        task?.interrupt()
+        task?.terminate()
+    }
+
+    private func setMDFindTask(_ task: Process?) {
+        withMDFindTaskLock {
+            mdfindTask = task
+        }
+    }
+
+    @discardableResult
+    private func withMDFindTaskLock<T>(_ action: () -> T) -> T {
+        mdfindTaskLock.lock()
+        defer { mdfindTaskLock.unlock() }
+        return action()
     }
 
 
@@ -230,27 +248,47 @@ final class MetadataSearchController: ObservableObject {
                 task.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
                 task.arguments = arguments
 
-                let pipe = Pipe()
-                task.standardOutput = pipe
-                task.standardError = pipe
-                controller.mdfindTask = task
+                let stdoutPipe = Pipe()
+                let stderrPipe = Pipe()
+                task.standardOutput = stdoutPipe
+                task.standardError = stderrPipe
+                controller.setMDFindTask(task)
 
                 do {
                     try task.run()
                 } catch {
-                    controller.mdfindTask = nil
+                    controller.setMDFindTask(nil)
                     self.handleFailure("Failed to run mdfind: \(error.localizedDescription)", runToken: runToken)
                     return
                 }
 
-                task.waitUntilExit()
-                controller.mdfindTask = nil
+                var stdoutData = Data()
+                var stderrData = Data()
+                let outputGroup = DispatchGroup()
+                let outputQueue = DispatchQueue.global(qos: .userInitiated)
 
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                let output = String(decoding: data, as: UTF8.self)
+                // Drain both streams while the process is running to avoid pipe backpressure deadlocks.
+                outputGroup.enter()
+                outputQueue.async {
+                    stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                    outputGroup.leave()
+                }
+
+                outputGroup.enter()
+                outputQueue.async {
+                    stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                    outputGroup.leave()
+                }
+
+                task.waitUntilExit()
+                outputGroup.wait()
+                controller.setMDFindTask(nil)
+
+                let output = String(decoding: stdoutData, as: UTF8.self)
+                let errorOutput = String(decoding: stderrData, as: UTF8.self)
 
                 guard task.terminationStatus == 0 else {
-                    let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let trimmed = errorOutput.trimmingCharacters(in: .whitespacesAndNewlines)
                     let detail = trimmed.isEmpty ? "" : " Details: \(trimmed)"
                     self.handleFailure("mdfind exited with code \(task.terminationStatus).\(detail)", runToken: runToken)
                     return
