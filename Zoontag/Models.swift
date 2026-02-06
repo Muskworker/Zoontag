@@ -231,4 +231,22 @@ enum TagAutocompleteLogic {
         }
         return suggestions.first
     }
+
+    static func suggestions(for input: String,
+                            in catalog: [String: TagAutocompleteEntry],
+                            limit: Int = 5) -> [TagAutocompleteEntry] {
+        let query = normalizedName(input)
+        guard !query.isEmpty else { return [] }
+
+        return catalog.values
+            .filter {
+                let normalizedDisplayName = normalizedName($0.displayName)
+                return normalizedDisplayName.contains(query) && normalizedDisplayName != query
+            }
+            .sorted {
+                $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+            }
+            .prefix(limit)
+            .map { $0 }
+    }
 }

@@ -34,6 +34,11 @@ Apple notes that **Open Anyway** is available for about one hour after the block
 3. Use sidebar tag controls to refine:
    - `+` include a tag
    - `-` exclude a tag
+   - In **Query > Find tag**, type any tag name (not only top tags), then:
+     - `+` include typed tag
+     - `-` exclude typed tag
+     - `x` remove that tag from current query filters
+   - `Up` / `Down` navigate autosuggestions, `Tab` accepts highlighted suggestion
 4. Remove active tag chips to widen results.
 5. In the inspector "Add Tag" input, use autocomplete:
    - `Up` / `Down` to choose suggestions
@@ -43,6 +48,7 @@ Apple notes that **Open Anyway** is available for about one hour after the block
 - Finder-tag search via Spotlight (`NSMetadataQuery`)
 - Include/exclude boolean filtering on tags
 - Sidebar facets computed from the current result set
+- Sidebar query-tag autosuggest input for include/exclude/remove actions on any tag name
 - Tag editor autocomplete with keyboard navigation (`Up`/`Down` + `Tab` complete)
 - Fallback to `mdfind` and filesystem enumeration when needed
 

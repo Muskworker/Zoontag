@@ -85,4 +85,30 @@ final class ZoontagTests: XCTestCase {
         let accepted = TagAutocompleteLogic.acceptedSuggestion(in: suggestions, highlightedID: nil)
         XCTAssertEqual(accepted, suggestions.first)
     }
+
+    func testAutocompleteSuggestionsExcludeExactMatchAndSortResults() {
+        let catalog = [
+            "cat": TagAutocompleteEntry(id: "cat", displayName: "Cat", color: .none),
+            "bobcat": TagAutocompleteEntry(id: "bobcat", displayName: "bobcat", color: .none),
+            "cats": TagAutocompleteEntry(id: "cats", displayName: "Cats", color: .none),
+            "dog": TagAutocompleteEntry(id: "dog", displayName: "Dog", color: .none),
+        ]
+
+        let suggestions = TagAutocompleteLogic.suggestions(for: " cat ", in: catalog, limit: 10)
+
+        XCTAssertEqual(suggestions.map(\.id), ["bobcat", "cats"])
+    }
+
+    func testAutocompleteSuggestionsRespectLimit() {
+        let catalog = [
+            "tag-a": TagAutocompleteEntry(id: "tag-a", displayName: "tag-a", color: .none),
+            "tag-b": TagAutocompleteEntry(id: "tag-b", displayName: "tag-b", color: .none),
+            "tag-c": TagAutocompleteEntry(id: "tag-c", displayName: "tag-c", color: .none),
+        ]
+
+        let suggestions = TagAutocompleteLogic.suggestions(for: "tag", in: catalog, limit: 2)
+
+        XCTAssertEqual(suggestions.count, 2)
+        XCTAssertEqual(suggestions.map(\.id), ["tag-a", "tag-b"])
+    }
 }
