@@ -116,4 +116,44 @@ final class ZoontagTests: XCTestCase {
         XCTAssertEqual(suggestions.count, 2)
         XCTAssertEqual(suggestions.map(\.id), ["tag-a", "tag-b"])
     }
+
+    func testSelectionTagSummaryCountsDistinctItemsPerTag() {
+        let baseURL = URL(fileURLWithPath: "/tmp")
+        let items = [
+            SearchResultItem(url: baseURL.appending(path: "a.jpg"),
+                             displayName: "A",
+                             tags: [FinderTag(name: "Cat"), FinderTag(name: "cat"), FinderTag(name: "Blue")]),
+            SearchResultItem(url: baseURL.appending(path: "b.jpg"),
+                             displayName: "B",
+                             tags: [FinderTag(name: "cat"), FinderTag(name: "Green")]),
+            SearchResultItem(url: baseURL.appending(path: "c.jpg"),
+                             displayName: "C",
+                             tags: [FinderTag(name: "blue")]),
+        ]
+
+        let summaries = SelectionTagSummaryBuilder.build(from: items)
+        let counts = Dictionary(uniqueKeysWithValues: summaries.map { ($0.normalizedName, $0.count) })
+
+        XCTAssertEqual(counts["cat"], 2)
+        XCTAssertEqual(counts["blue"], 2)
+        XCTAssertEqual(counts["green"], 1)
+    }
+
+    func testSelectionTagSummaryPrefersExplicitColorAndSortsByDisplayName() {
+        let baseURL = URL(fileURLWithPath: "/tmp")
+        let items = [
+            SearchResultItem(url: baseURL.appending(path: "a.jpg"),
+                             displayName: "A",
+                             tags: [FinderTag(name: "zebra"), FinderTag(name: "apple", colorHex: "FF0000")]),
+            SearchResultItem(url: baseURL.appending(path: "b.jpg"),
+                             displayName: "B",
+                             tags: [FinderTag(name: "Apple"), FinderTag(name: "zebra", colorHex: "00FF00")]),
+        ]
+
+        let summaries = SelectionTagSummaryBuilder.build(from: items)
+
+        XCTAssertEqual(summaries.map(\.normalizedName), ["apple", "zebra"])
+        XCTAssertEqual(summaries.first(where: { $0.normalizedName == "apple" })?.colorHex, "FF0000")
+        XCTAssertEqual(summaries.first(where: { $0.normalizedName == "zebra" })?.colorHex, "00FF00")
+    }
 }

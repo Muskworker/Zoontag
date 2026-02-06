@@ -28,3 +28,4 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Added keyboard autocomplete controls in tag editor (`Up`/`Down` to navigate suggestions, `Tab` to accept).
 - Added a left-sidebar query tag input with autosuggestions so users can include, exclude, or remove tags even when they are not present in top facets.
 - Fixed a query execution deadlock that could leave searches stuck (spinning throbber) when running broad exclude-only tag filters.
+- Added multi-file result selection (`Cmd`-click) so inspector tag add/remove actions can update all selected files at once.

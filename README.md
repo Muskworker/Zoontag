@@ -40,9 +40,13 @@ Apple notes that **Open Anyway** is available for about one hour after the block
      - `x` remove that tag from current query filters
    - `Up` / `Down` navigate autosuggestions, `Tab` accepts highlighted suggestion
 4. Remove active tag chips to widen results.
-5. In the inspector "Add Tag" input, use autocomplete:
+5. Select one or more files in the grid:
+   - Click to select one file
+   - `Cmd`-click to add/remove files from the current selection
+6. In the inspector "Add Tag" input, use autocomplete:
    - `Up` / `Down` to choose suggestions
    - `Tab` to accept the highlighted suggestion and apply its known Finder color
+   - Add/remove actions apply to all currently selected files
 
 ### Current Capabilities
 - Finder-tag search via Spotlight (`NSMetadataQuery`)
@@ -50,6 +54,7 @@ Apple notes that **Open Anyway** is available for about one hour after the block
 - Sidebar facets computed from the current result set
 - Sidebar query-tag autosuggest input for include/exclude/remove actions on any tag name
 - Tag editor autocomplete with keyboard navigation (`Up`/`Down` + `Tab` complete)
+- Multi-file selection (`Cmd`-click) with bulk add/remove Finder tag edits
 - Fallback to `mdfind` and filesystem enumeration when needed
 
 ## For Developers

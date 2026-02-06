@@ -15,7 +15,8 @@ struct ContentView: View {
     @State private var isEditingTags = false
     @State private var highlightedSuggestionID: String?
 
-    @State private var selection: SearchResultItem? = nil
+    @State private var selectedItemIDs: Set<SearchResultItem.ID> = []
+    @State private var preferredSelectionID: SearchResultItem.ID?
 
     var body: some View {
         HSplitView {
@@ -33,8 +34,8 @@ struct ContentView: View {
         .onChange(of: state) { _, newValue in
             search.run(state: newValue)
         }
-        .onChange(of: selection) { _, newSelection in
-            if newSelection == nil {
+        .onChange(of: selectedItemIDs) { _, newSelection in
+            if newSelection.isEmpty {
                 newTagName = ""
                 tagEditError = nil
                 highlightedSuggestionID = nil
@@ -50,6 +51,7 @@ struct ContentView: View {
         .onChange(of: search.results) { _, _ in
             syncHighlightedSuggestion()
             syncQueryHighlightedSuggestion()
+            syncSelectionToResults()
         }
         .onChange(of: search.topFacets) { _, _ in
             syncHighlightedSuggestion()
@@ -305,7 +307,7 @@ struct ContentView: View {
                     ForEach(search.results) { item in
                         resultCard(item)
                             .onTapGesture {
-                                selection = item
+                                handleResultSelection(item)
                             }
                     }
                 }
@@ -315,7 +317,7 @@ struct ContentView: View {
     }
 
     private func resultCard(_ item: SearchResultItem) -> some View {
-        let isSelected = (selection?.id == item.id)
+        let isSelected = selectedItemIDs.contains(item.id)
 
         return VStack(alignment: .leading, spacing: 8) {
             FileThumbnailView(url: item.url, maxDimension: 120)
@@ -348,55 +350,108 @@ struct ContentView: View {
 
     private var inspector: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let item = selection {
-                Text(item.displayName)
-                    .font(.title3)
-
-                Text(item.url.path)
-                    .font(.footnote)
+            if selectedItems.isEmpty {
+                Text("Select one or more items")
                     .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
+                Spacer()
+            } else {
+                let isMultiSelection = selectedItems.count > 1
 
-                Text("Preview")
-                    .font(.headline)
+                if isMultiSelection {
+                    Text("\(selectedItems.count) items selected")
+                        .font(.title3)
+                    Text("Tag edits apply to all selected items.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else if let item = primarySelectedItem {
+                    Text(item.displayName)
+                        .font(.title3)
+                    Text(item.url.path)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
 
-                QuickLookPreviewContainer(url: item.url)
-                    .frame(maxHeight: dynamicPreviewHeight(for: item))
+                    Text("Preview")
+                        .font(.headline)
+
+                    QuickLookPreviewContainer(url: item.url)
+                        .frame(maxHeight: dynamicPreviewHeight(for: item))
+                }
 
                 Divider()
 
                 Text("Tags")
                     .font(.headline)
 
-                if item.tags.isEmpty {
-                    Text("No tags.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    let columns = [GridItem(.adaptive(minimum: 120), spacing: 8, alignment: .leading)]
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                        ForEach(item.tags) { tag in
-                            HStack(spacing: 6) {
-                                if let color = colorFromHex(tag.colorHex) {
-                                    Circle()
-                                        .fill(color)
-                                        .frame(width: 10, height: 10)
+                if isMultiSelection {
+                    if selectionTagSummaries.isEmpty {
+                        Text("No tags across selected items.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        let columns = [GridItem(.adaptive(minimum: 160), spacing: 8, alignment: .leading)]
+                        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                            ForEach(selectionTagSummaries) { summary in
+                                HStack(spacing: 6) {
+                                    if let color = colorFromHex(summary.colorHex) {
+                                        Circle()
+                                            .fill(color)
+                                            .frame(width: 10, height: 10)
+                                    }
+                                    Text(summary.displayName)
+                                        .lineLimit(1)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    if summary.count < selectedItems.count {
+                                        Text("\(summary.count)/\(selectedItems.count)")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Button {
+                                        removeTagFromSelection(named: summary.displayName)
+                                    } label: {
+                                        Image(systemName: "minus.circle.fill")
+                                            .foregroundStyle(.red)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Remove tag from selected items")
+                                    .disabled(isEditingTags)
                                 }
-                                Text(tag.name)
-                                    .lineLimit(1)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                Button {
-                                    removeTagFromSelection(tag)
-                                } label: {
-                                    Image(systemName: "minus.circle.fill")
-                                        .foregroundStyle(.red)
-                                }
-                                .buttonStyle(.plain)
-                                .help("Remove tag")
-                                .disabled(isEditingTags)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(RoundedRectangle(cornerRadius: 10).fill(Color.gray.opacity(0.15)))
                             }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(RoundedRectangle(cornerRadius: 10).fill(Color.gray.opacity(0.15)))
+                        }
+                    }
+                } else if let item = primarySelectedItem {
+                    if item.tags.isEmpty {
+                        Text("No tags.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        let columns = [GridItem(.adaptive(minimum: 120), spacing: 8, alignment: .leading)]
+                        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                            ForEach(item.tags) { tag in
+                                HStack(spacing: 6) {
+                                    if let color = colorFromHex(tag.colorHex) {
+                                        Circle()
+                                            .fill(color)
+                                            .frame(width: 10, height: 10)
+                                    }
+                                    Text(tag.name)
+                                        .lineLimit(1)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    Button {
+                                        removeTagFromSelection(named: tag.name)
+                                    } label: {
+                                        Image(systemName: "minus.circle.fill")
+                                            .foregroundStyle(.red)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Remove tag")
+                                    .disabled(isEditingTags)
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(RoundedRectangle(cornerRadius: 10).fill(Color.gray.opacity(0.15)))
+                            }
                         }
                     }
                 }
@@ -443,7 +498,7 @@ struct ContentView: View {
                         } label: {
                             Label("Add", systemImage: "plus.circle.fill")
                         }
-                        .disabled(newTagName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selection == nil || isEditingTags)
+                        .disabled(newTagName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedItemIDs.isEmpty || isEditingTags)
                     }
 
                     if !tagSuggestions.isEmpty {
@@ -499,16 +554,16 @@ struct ContentView: View {
 
                 HStack {
                     Button("Reveal in Finder") {
-                        NSWorkspace.shared.activateFileViewerSelecting([item.url])
+                        NSWorkspace.shared.activateFileViewerSelecting(selectedItems.map(\.url))
                     }
-                    Button("Open") {
-                        NSWorkspace.shared.open(item.url)
+                    .disabled(selectedItems.isEmpty)
+
+                    if let item = primarySelectedItem, !isMultiSelection {
+                        Button("Open") {
+                            NSWorkspace.shared.open(item.url)
+                        }
                     }
                 }
-            } else {
-                Text("Select an item")
-                    .foregroundStyle(.secondary)
-                Spacer()
             }
         }
         .padding()
@@ -552,51 +607,61 @@ struct ContentView: View {
     }
 
     private func addTagToSelection() {
-        guard let target = selection?.url else { return }
+        let targets = selectedItems.map(\.url)
+        guard !targets.isEmpty else { return }
         let trimmed = newTagName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let tag = FinderTag(name: trimmed, colorHex: newTagColor.hexValue)
-        performTagEdit(target: target, resetInput: true) {
+        performTagEdit(targets: targets, resetInput: true) { target in
             try FinderTagEditor.addTag(tag, to: target)
         }
     }
 
-    private func removeTagFromSelection(_ tag: FinderTag) {
-        guard let target = selection?.url else { return }
-        performTagEdit(target: target, resetInput: false) {
-            try FinderTagEditor.removeTag(named: tag.name, from: target)
+    private func removeTagFromSelection(named name: String) {
+        let targets = selectedItems.map(\.url)
+        guard !targets.isEmpty else { return }
+        performTagEdit(targets: targets, resetInput: false) { target in
+            try FinderTagEditor.removeTag(named: name, from: target)
         }
     }
 
-    private func performTagEdit(target: URL, resetInput: Bool, action: @escaping () throws -> [FinderTag]) {
+    private func performTagEdit(targets: [URL], resetInput: Bool, action: @escaping (URL) throws -> [FinderTag]) {
         guard !isEditingTags else { return }
+        guard !targets.isEmpty else { return }
         isEditingTags = true
         tagEditError = nil
+
         Task {
-            do {
-                let updated = try action()
-                await MainActor.run {
-                    applySelectionUpdate(url: target, tags: updated)
+            let total = targets.count
+            var failures: [String] = []
+
+            for target in targets {
+                do {
+                    _ = try action(target)
+                } catch {
+                    failures.append("\(target.lastPathComponent): \(error.localizedDescription)")
+                }
+            }
+
+            await MainActor.run {
+                if failures.isEmpty {
                     if resetInput {
                         newTagName = ""
                         setTagColor(.none, userInitiated: false)
                     }
-                    search.run(state: state)
+                } else {
+                    let failurePreview = failures.prefix(2).joined(separator: " • ")
+                    if failures.count == total {
+                        tagEditError = "Could not update tags. \(failurePreview)"
+                    } else {
+                        let successCount = total - failures.count
+                        tagEditError = "Updated \(successCount)/\(total) items. \(failurePreview)"
+                    }
                 }
-            } catch {
-                await MainActor.run {
-                    tagEditError = error.localizedDescription
-                }
-            }
-            await MainActor.run {
+                search.run(state: state)
                 isEditingTags = false
             }
         }
-    }
-
-    private func applySelectionUpdate(url: URL, tags: [FinderTag]) {
-        let displayName = selection?.displayName ?? url.lastPathComponent
-        selection = SearchResultItem(url: url, displayName: displayName, tags: tags)
     }
 
     private func handleTagNameChange(_ value: String) {
@@ -687,6 +752,37 @@ struct ContentView: View {
                                                                                              previousID: highlightedQuerySuggestionID)
     }
 
+    private func handleResultSelection(_ item: SearchResultItem) {
+        if NSEvent.modifierFlags.contains(.command) {
+            if selectedItemIDs.contains(item.id) {
+                selectedItemIDs.remove(item.id)
+            } else {
+                selectedItemIDs.insert(item.id)
+                preferredSelectionID = item.id
+            }
+        } else {
+            selectedItemIDs = [item.id]
+            preferredSelectionID = item.id
+        }
+
+        syncSelectionToResults()
+        tagEditError = nil
+    }
+
+    private func syncSelectionToResults() {
+        let validIDs = Set(search.results.map(\.id))
+        let filteredIDs = selectedItemIDs.intersection(validIDs)
+        if filteredIDs != selectedItemIDs {
+            selectedItemIDs = filteredIDs
+        }
+
+        if let preferredSelectionID, filteredIDs.contains(preferredSelectionID) {
+            return
+        }
+
+        preferredSelectionID = search.results.first(where: { filteredIDs.contains($0.id) })?.id
+    }
+
     // MARK: - Folder picker
 
     private func chooseFolder() {
@@ -698,7 +794,8 @@ struct ContentView: View {
 
         if panel.runModal() == .OK, let url = panel.url {
             state.scopeURLs = [url]
-            selection = nil
+            selectedItemIDs.removeAll()
+            preferredSelectionID = nil
             newTagName = ""
             highlightedSuggestionID = nil
             setTagColor(.none, userInitiated: false)
@@ -827,6 +924,20 @@ private struct FacetGroup: Identifiable {
 }
 
 private extension ContentView {
+    var selectedItems: [SearchResultItem] {
+        search.results.filter { selectedItemIDs.contains($0.id) }
+    }
+
+    var primarySelectedItem: SearchResultItem? {
+        if let preferredSelectionID {
+            return selectedItems.first(where: { $0.id == preferredSelectionID })
+        }
+        return selectedItems.first
+    }
+
+    var selectionTagSummaries: [SelectionTagSummary] {
+        SelectionTagSummaryBuilder.build(from: selectedItems)
+    }
 
     var canApplyTypedTagToQuery: Bool {
         normalizedQueryTagName != nil
