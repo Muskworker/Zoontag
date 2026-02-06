@@ -35,11 +35,15 @@ Apple notes that **Open Anyway** is available for about one hour after the block
    - `+` include a tag
    - `-` exclude a tag
 4. Remove active tag chips to widen results.
+5. In the inspector "Add Tag" input, use autocomplete:
+   - `Up` / `Down` to choose suggestions
+   - `Tab` to accept the highlighted suggestion and apply its known Finder color
 
 ### Current Capabilities
 - Finder-tag search via Spotlight (`NSMetadataQuery`)
 - Include/exclude boolean filtering on tags
 - Sidebar facets computed from the current result set
+- Tag editor autocomplete with keyboard navigation (`Up`/`Down` + `Tab` complete)
 - Fallback to `mdfind` and filesystem enumeration when needed
 
 ## For Developers
