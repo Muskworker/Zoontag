@@ -5,6 +5,23 @@ struct SearchResultItem: Identifiable, Hashable {
     let url: URL
     let displayName: String
     let tags: [FinderTag]
+    let contentModificationDate: Date?
+    let creationDate: Date?
+    let fileSizeBytes: Int64?
+
+    init(url: URL,
+         displayName: String,
+         tags: [FinderTag],
+         contentModificationDate: Date? = nil,
+         creationDate: Date? = nil,
+         fileSizeBytes: Int64? = nil) {
+        self.url = url
+        self.displayName = displayName
+        self.tags = tags
+        self.contentModificationDate = contentModificationDate
+        self.creationDate = creationDate
+        self.fileSizeBytes = fileSizeBytes
+    }
 
     var id: URL { url }
     var tagNames: [String] { tags.map(\.name) }
@@ -14,6 +31,129 @@ struct SearchResultItem: Identifiable, Hashable {
         let img = NSWorkspace.shared.icon(forFile: url.path)
         img.size = NSSize(width: size, height: size)
         return img
+    }
+}
+
+enum SearchResultSortOption: String, CaseIterable, Identifiable {
+    case nameAscending
+    case nameDescending
+    case modifiedNewestFirst
+    case modifiedOldestFirst
+    case createdNewestFirst
+    case createdOldestFirst
+    case sizeLargestFirst
+    case sizeSmallestFirst
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .nameAscending: return "Name (A-Z)"
+        case .nameDescending: return "Name (Z-A)"
+        case .modifiedNewestFirst: return "Date Modified (Newest)"
+        case .modifiedOldestFirst: return "Date Modified (Oldest)"
+        case .createdNewestFirst: return "Date Created (Newest)"
+        case .createdOldestFirst: return "Date Created (Oldest)"
+        case .sizeLargestFirst: return "Size (Largest)"
+        case .sizeSmallestFirst: return "Size (Smallest)"
+        }
+    }
+
+    func sorted(_ items: [SearchResultItem]) -> [SearchResultItem] {
+        items.sorted(by: comparator)
+    }
+
+    private func comparator(_ lhs: SearchResultItem, _ rhs: SearchResultItem) -> Bool {
+        switch self {
+        case .nameAscending:
+            return compareDisplayName(lhs, rhs) ?? (lhs.url.path < rhs.url.path)
+        case .nameDescending:
+            if let nameOrder = compareDisplayName(lhs, rhs) {
+                return !nameOrder
+            }
+            return lhs.url.path < rhs.url.path
+        case .modifiedNewestFirst:
+            return compareOptionalDate(lhs.contentModificationDate,
+                                       rhs.contentModificationDate,
+                                       descending: true,
+                                       lhs: lhs,
+                                       rhs: rhs)
+        case .modifiedOldestFirst:
+            return compareOptionalDate(lhs.contentModificationDate,
+                                       rhs.contentModificationDate,
+                                       descending: false,
+                                       lhs: lhs,
+                                       rhs: rhs)
+        case .createdNewestFirst:
+            return compareOptionalDate(lhs.creationDate,
+                                       rhs.creationDate,
+                                       descending: true,
+                                       lhs: lhs,
+                                       rhs: rhs)
+        case .createdOldestFirst:
+            return compareOptionalDate(lhs.creationDate,
+                                       rhs.creationDate,
+                                       descending: false,
+                                       lhs: lhs,
+                                       rhs: rhs)
+        case .sizeLargestFirst:
+            return compareOptionalInt(lhs.fileSizeBytes,
+                                      rhs.fileSizeBytes,
+                                      descending: true,
+                                      lhs: lhs,
+                                      rhs: rhs)
+        case .sizeSmallestFirst:
+            return compareOptionalInt(lhs.fileSizeBytes,
+                                      rhs.fileSizeBytes,
+                                      descending: false,
+                                      lhs: lhs,
+                                      rhs: rhs)
+        }
+    }
+
+    private func compareDisplayName(_ lhs: SearchResultItem, _ rhs: SearchResultItem) -> Bool? {
+        switch lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) {
+        case .orderedAscending:
+            return true
+        case .orderedDescending:
+            return false
+        case .orderedSame:
+            return nil
+        }
+    }
+
+    private func compareOptionalDate(_ lhsDate: Date?,
+                                     _ rhsDate: Date?,
+                                     descending: Bool,
+                                     lhs: SearchResultItem,
+                                     rhs: SearchResultItem) -> Bool {
+        switch (lhsDate, rhsDate) {
+        case let (left?, right?) where left != right:
+            return descending ? (left > right) : (left < right)
+        case (.some, .none):
+            return true
+        case (.none, .some):
+            return false
+        default:
+            return compareDisplayName(lhs, rhs) ?? (lhs.url.path < rhs.url.path)
+        }
+    }
+
+    private func compareOptionalInt(_ lhsValue: Int64?,
+                                    _ rhsValue: Int64?,
+                                    descending: Bool,
+                                    lhs: SearchResultItem,
+                                    rhs: SearchResultItem) -> Bool {
+        switch (lhsValue, rhsValue) {
+        case let (left?, right?) where left != right:
+            return descending ? (left > right) : (left < right)
+        case (.some, .none):
+            return true
+        case (.none, .some):
+            return false
+        default:
+            return compareDisplayName(lhs, rhs) ?? (lhs.url.path < rhs.url.path)
+        }
     }
 }
 

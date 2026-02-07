@@ -171,10 +171,19 @@ final class MetadataSearchController: ObservableObject {
                             preferredName: String? = nil,
                             fallbackName: String? = nil,
                             primaryTags: [String]? = nil,
-                            fallbackTags: [String]? = nil) -> SearchResultItem {
+                            fallbackTags: [String]? = nil,
+                            resourceValues: URLResourceValues? = nil) -> SearchResultItem {
         let displayName = preferredName ?? fallbackName ?? url.lastPathComponent
         let tags = normalizedTags(primaryTags: primaryTags, fallbackTags: fallbackTags, url: url)
-        return SearchResultItem(url: url, displayName: displayName, tags: tags)
+        let metadata = resourceValues
+            ?? (try? url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey, .fileSizeKey]))
+
+        return SearchResultItem(url: url,
+                                displayName: displayName,
+                                tags: tags,
+                                contentModificationDate: metadata?.contentModificationDate,
+                                creationDate: metadata?.creationDate,
+                                fileSizeBytes: metadata?.fileSize.map(Int64.init))
     }
 
     private protocol SearchBackend {
@@ -239,7 +248,11 @@ final class MetadataSearchController: ObservableObject {
                   !arguments.isEmpty else { return false }
 
             controller.isSearching = true
-            let resourceKeys: Set<URLResourceKey> = [.localizedNameKey, .tagNamesKey]
+            let resourceKeys: Set<URLResourceKey> = [.localizedNameKey,
+                                                     .tagNamesKey,
+                                                     .contentModificationDateKey,
+                                                     .creationDateKey,
+                                                     .fileSizeKey]
 
             controller.fallbackQueue.async { [weak self] in
                 guard let self, let controller = self.controller else { return }
@@ -309,7 +322,8 @@ final class MetadataSearchController: ObservableObject {
                     let item = controller.makeResult(url: url,
                                                      preferredName: resourceValues?.localizedName,
                                                      primaryTags: nil,
-                                                     fallbackTags: resourceValues?.tagNames)
+                                                     fallbackTags: resourceValues?.tagNames,
+                                                     resourceValues: resourceValues)
                     items.append(item)
                 }
 
@@ -366,7 +380,13 @@ final class MetadataSearchController: ObservableObject {
             guard !scopeURLs.isEmpty else { return false }
 
             controller.isSearching = true
-            let resourceKeys: Set<URLResourceKey> = [.isRegularFileKey, .isDirectoryKey, .localizedNameKey, .tagNamesKey]
+            let resourceKeys: Set<URLResourceKey> = [.isRegularFileKey,
+                                                     .isDirectoryKey,
+                                                     .localizedNameKey,
+                                                     .tagNamesKey,
+                                                     .contentModificationDateKey,
+                                                     .creationDateKey,
+                                                     .fileSizeKey]
             let fm = FileManager.default
 
             controller.fallbackQueue.async { [weak self] in
@@ -383,7 +403,8 @@ final class MetadataSearchController: ObservableObject {
                         let item = controller.makeResult(url: scope,
                                                          preferredName: scopeValues?.localizedName,
                                                          primaryTags: nil,
-                                                         fallbackTags: scopeValues?.tagNames)
+                                                         fallbackTags: scopeValues?.tagNames,
+                                                         resourceValues: scopeValues)
                         collected.append(item)
                         continue
                     }
@@ -409,7 +430,8 @@ final class MetadataSearchController: ObservableObject {
                         let item = controller.makeResult(url: fileURL,
                                                          preferredName: values?.localizedName,
                                                          primaryTags: nil,
-                                                         fallbackTags: values?.tagNames)
+                                                         fallbackTags: values?.tagNames,
+                                                         resourceValues: values)
                         collected.append(item)
                     }
                 }
