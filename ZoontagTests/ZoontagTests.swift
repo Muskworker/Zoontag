@@ -156,4 +156,64 @@ final class ZoontagTests: XCTestCase {
         XCTAssertEqual(summaries.first(where: { $0.normalizedName == "apple" })?.colorHex, "FF0000")
         XCTAssertEqual(summaries.first(where: { $0.normalizedName == "zebra" })?.colorHex, "00FF00")
     }
+
+    func testSearchResultSortOptionOrdersNamesAscendingAndDescending() {
+        let baseURL = URL(fileURLWithPath: "/tmp")
+        let items = [
+            SearchResultItem(url: baseURL.appending(path: "z.mov"), displayName: "Zulu", tags: []),
+            SearchResultItem(url: baseURL.appending(path: "b.mov"), displayName: "beta", tags: []),
+            SearchResultItem(url: baseURL.appending(path: "a.mov"), displayName: "Alpha", tags: []),
+        ]
+
+        let ascending = SearchResultSortOption.nameAscending.sorted(items)
+        XCTAssertEqual(ascending.map(\.displayName), ["Alpha", "beta", "Zulu"])
+
+        let descending = SearchResultSortOption.nameDescending.sorted(items)
+        XCTAssertEqual(descending.map(\.displayName), ["Zulu", "beta", "Alpha"])
+    }
+
+    func testSearchResultSortOptionOrdersModifiedDateNewestFirstWithNilLast() {
+        let baseURL = URL(fileURLWithPath: "/tmp")
+        let oldDate = Date(timeIntervalSince1970: 1_700_000_000)
+        let newDate = Date(timeIntervalSince1970: 1_800_000_000)
+
+        let items = [
+            SearchResultItem(url: baseURL.appending(path: "missing.txt"),
+                             displayName: "Missing",
+                             tags: [],
+                             contentModificationDate: nil),
+            SearchResultItem(url: baseURL.appending(path: "old.txt"),
+                             displayName: "Old",
+                             tags: [],
+                             contentModificationDate: oldDate),
+            SearchResultItem(url: baseURL.appending(path: "new.txt"),
+                             displayName: "New",
+                             tags: [],
+                             contentModificationDate: newDate),
+        ]
+
+        let sorted = SearchResultSortOption.modifiedNewestFirst.sorted(items)
+        XCTAssertEqual(sorted.map(\.displayName), ["New", "Old", "Missing"])
+    }
+
+    func testSearchResultSortOptionOrdersSizeSmallestFirstWithNilLast() {
+        let baseURL = URL(fileURLWithPath: "/tmp")
+        let items = [
+            SearchResultItem(url: baseURL.appending(path: "unknown.bin"),
+                             displayName: "Unknown",
+                             tags: [],
+                             fileSizeBytes: nil),
+            SearchResultItem(url: baseURL.appending(path: "large.bin"),
+                             displayName: "Large",
+                             tags: [],
+                             fileSizeBytes: 2_000),
+            SearchResultItem(url: baseURL.appending(path: "small.bin"),
+                             displayName: "Small",
+                             tags: [],
+                             fileSizeBytes: 120),
+        ]
+
+        let sorted = SearchResultSortOption.sizeSmallestFirst.sorted(items)
+        XCTAssertEqual(sorted.map(\.displayName), ["Small", "Large", "Unknown"])
+    }
 }

@@ -14,89 +14,98 @@ struct ContentView: View {
     @State private var suppressTagColorChange = false
     @State private var isEditingTags = false
     @State private var highlightedSuggestionID: String?
+    @State private var sortOption: SearchResultSortOption = .createdNewestFirst
 
     @State private var selectedItemIDs: Set<SearchResultItem.ID> = []
     @State private var preferredSelectionID: SearchResultItem.ID?
 
     var body: some View {
+        splitLayout
+            .onChange(of: state) { _, newValue in
+                search.run(state: newValue)
+            }
+            .onChange(of: selectedItemIDs) { _, newSelection in
+                if newSelection.isEmpty {
+                    newTagName = ""
+                    tagEditError = nil
+                    highlightedSuggestionID = nil
+                    setTagColor(.none, userInitiated: false)
+                }
+            }
+            .onChange(of: newTagName) { _, newValue in
+                handleTagNameChange(newValue)
+            }
+            .onChange(of: queryTagName) { _, _ in
+                syncQueryHighlightedSuggestion()
+            }
+            .onChange(of: search.results) { _, _ in
+                syncHighlightedSuggestion()
+                syncQueryHighlightedSuggestion()
+                syncSelectionToResults()
+            }
+            .onChange(of: search.topFacets) { _, _ in
+                syncHighlightedSuggestion()
+                syncQueryHighlightedSuggestion()
+            }
+            .onChange(of: newTagColor) { _, _ in
+                if suppressTagColorChange {
+                    suppressTagColorChange = false
+                } else {
+                    userOverrodeTagColor = true
+                }
+            }
+            .onAppear {
+                // Start blank; user chooses a folder.
+            }
+            .frame(minWidth: 1000, minHeight: 650)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .toolbar {
+                ToolbarItemGroup {
+                    Button("Choose Folder…") { chooseFolder() }
+                    Divider()
+
+                    if search.isSearching {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+
+                    Text("Results: \(search.results.count)")
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Button {
+                        toggleDetailPane()
+                    } label: {
+                        Image(systemName: "sidebar.right")
+                    }
+                    .help(isDetailPaneVisible ? "Hide Details" : "Show Details")
+                    .accessibilityLabel(isDetailPaneVisible ? "Hide Details" : "Show Details")
+
+                    // Simple “clear all” for fast iteration
+                    Button("Clear Tags") {
+                        state.includeTags.removeAll()
+                        state.excludeTags.removeAll()
+                    }
+                    .disabled(state.includeTags.isEmpty && state.excludeTags.isEmpty)
+                }
+            }
+    }
+
+    private var splitLayout: some View {
         HSplitView {
             sidebar
                 .frame(minWidth: 250, idealWidth: 300, maxWidth: 420)
+                .frame(maxHeight: .infinity, alignment: .top)
 
             mainGrid
                 .frame(minWidth: 420, maxWidth: .infinity)
+                .frame(maxHeight: .infinity, alignment: .top)
 
             if isDetailPaneVisible {
                 inspector
                     .frame(minWidth: 320, idealWidth: 360, maxWidth: 560)
-            }
-        }
-        .onChange(of: state) { _, newValue in
-            search.run(state: newValue)
-        }
-        .onChange(of: selectedItemIDs) { _, newSelection in
-            if newSelection.isEmpty {
-                newTagName = ""
-                tagEditError = nil
-                highlightedSuggestionID = nil
-                setTagColor(.none, userInitiated: false)
-            }
-        }
-        .onChange(of: newTagName) { _, newValue in
-            handleTagNameChange(newValue)
-        }
-        .onChange(of: queryTagName) { _, _ in
-            syncQueryHighlightedSuggestion()
-        }
-        .onChange(of: search.results) { _, _ in
-            syncHighlightedSuggestion()
-            syncQueryHighlightedSuggestion()
-            syncSelectionToResults()
-        }
-        .onChange(of: search.topFacets) { _, _ in
-            syncHighlightedSuggestion()
-            syncQueryHighlightedSuggestion()
-        }
-        .onChange(of: newTagColor) { _, _ in
-            if suppressTagColorChange {
-                suppressTagColorChange = false
-            } else {
-                userOverrodeTagColor = true
-            }
-        }
-        .onAppear {
-            // Start blank; user chooses a folder.
-        }
-        .frame(minWidth: 1000, minHeight: 650)
-        .toolbar {
-            ToolbarItemGroup {
-                Button("Choose Folder…") { chooseFolder() }
-                Divider()
-
-                if search.isSearching {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-
-                Text("Results: \(search.results.count)")
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                Button {
-                    toggleDetailPane()
-                } label: {
-                    Image(systemName: "sidebar.right")
-                }
-                .help(isDetailPaneVisible ? "Hide Details" : "Show Details")
-                .accessibilityLabel(isDetailPaneVisible ? "Hide Details" : "Show Details")
-
-                // Simple “clear all” for fast iteration
-                Button("Clear Tags") {
-                    state.includeTags.removeAll()
-                    state.excludeTags.removeAll()
-                }
-                .disabled(state.includeTags.isEmpty && state.excludeTags.isEmpty)
+                    .frame(maxHeight: .infinity, alignment: .top)
             }
         }
     }
@@ -290,7 +299,7 @@ struct ContentView: View {
     // MARK: - Main grid
 
     private var mainGrid: some View {
-        ScrollView {
+        VStack(spacing: 0) {
             if state.scopeURLs.isEmpty {
                 VStack(spacing: 10) {
                     Text("Zoontag")
@@ -302,16 +311,33 @@ struct ContentView: View {
                 }
                 .frame(maxWidth: .infinity, minHeight: 400)
             } else {
-                let columns = Array(repeating: GridItem(.adaptive(minimum: 140), spacing: 14), count: 1)
-                LazyVGrid(columns: columns, spacing: 14) {
-                    ForEach(search.results) { item in
-                        resultCard(item)
-                            .onTapGesture {
-                                handleResultSelection(item)
-                            }
+                HStack {
+                    Spacer()
+                    Picker("Sort", selection: $sortOption) {
+                        ForEach(SearchResultSortOption.allCases) { option in
+                            Text(option.title)
+                                .tag(option)
+                        }
                     }
+                    .pickerStyle(.menu)
+                    .frame(minWidth: 180)
+                    .disabled(search.results.count < 2)
                 }
-                .padding()
+                .padding(.horizontal)
+                .padding(.top, 10)
+
+                ScrollView {
+                    let columns = Array(repeating: GridItem(.adaptive(minimum: 140), spacing: 14), count: 1)
+                    LazyVGrid(columns: columns, spacing: 14) {
+                        ForEach(sortedResults) { item in
+                            resultCard(item)
+                                .onTapGesture {
+                                    handleResultSelection(item)
+                                }
+                        }
+                    }
+                    .padding()
+                }
             }
         }
     }
@@ -780,7 +806,7 @@ struct ContentView: View {
             return
         }
 
-        preferredSelectionID = search.results.first(where: { filteredIDs.contains($0.id) })?.id
+        preferredSelectionID = sortedResults.first(where: { filteredIDs.contains($0.id) })?.id
     }
 
     // MARK: - Folder picker
@@ -924,8 +950,12 @@ private struct FacetGroup: Identifiable {
 }
 
 private extension ContentView {
+    var sortedResults: [SearchResultItem] {
+        sortOption.sorted(search.results)
+    }
+
     var selectedItems: [SearchResultItem] {
-        search.results.filter { selectedItemIDs.contains($0.id) }
+        sortedResults.filter { selectedItemIDs.contains($0.id) }
     }
 
     var primarySelectedItem: SearchResultItem? {

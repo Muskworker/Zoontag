@@ -30,7 +30,7 @@ Apple notes that **Open Anyway** is available for about one hour after the block
 
 ### How to Use
 1. Choose a folder to search.
-2. Browse matching files in the grid.
+2. Browse matching files in the grid, and use the center-pane **Sort** menu to order by name, date modified, date created, or file size.
 3. Use sidebar tag controls to refine:
    - `+` include a tag
    - `-` exclude a tag
@@ -55,6 +55,7 @@ Apple notes that **Open Anyway** is available for about one hour after the block
 - Sidebar query-tag autosuggest input for include/exclude/remove actions on any tag name
 - Tag editor autocomplete with keyboard navigation (`Up`/`Down` + `Tab` complete)
 - Multi-file selection (`Cmd`-click) with bulk add/remove Finder tag edits
+- Center-pane sort control (name/date modified/date created/size, ascending and descending)
 - Fallback to `mdfind` and filesystem enumeration when needed
 
 ## For Developers
