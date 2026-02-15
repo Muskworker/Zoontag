@@ -7,9 +7,14 @@ final class MetadataSearchController: ObservableObject {
     @Published private(set) var results: [SearchResultItem] = []
     @Published private(set) var isSearching: Bool = false
     @Published private(set) var lastError: String? = nil
+    @Published private(set) var knownTotalResults: Int? = nil
+    @Published private(set) var hasMoreResults: Bool = false
+    @Published private(set) var resultsSortOption: SearchResultSortOption = .createdNewestFirst
+    @Published private(set) var isRefiningResults: Bool = false
 
     private let facetCounter = FacetCounter()
-    private let resultLimit = 5000
+    private let pageSize = 5000
+    private var currentResultLimit = 5000
     private let enableMetadataQuery = false
 
     // Exposed facets (computed from results)
@@ -19,6 +24,9 @@ final class MetadataSearchController: ObservableObject {
     private var observers: [NSObjectProtocol] = []
     private var securityScopedURLs: [URL] = []
     private var currentRunToken = UUID()
+    private var lastRunState: QueryState?
+    private var cachedSearchKey: SearchCacheKey?
+    private var cachedSortableResults: [SearchResultItem] = []
     private let fallbackQueue = DispatchQueue(label: "MetadataSearchController.mdfind", qos: .userInitiated)
     private let mdfindTaskLock = NSLock()
     private var mdfindTask: Process?
@@ -35,11 +43,32 @@ final class MetadataSearchController: ObservableObject {
         case enumerate
     }
 
+    private struct SearchCacheKey: Equatable {
+        let includeTags: Set<String>
+        let excludeTags: Set<String>
+        let scopePaths: [String]
+    }
+
     deinit {
         stop()
     }
 
     func run(state: QueryState) {
+        executeRun(state: state, resetPagination: true)
+    }
+
+    func loadMoreResults() {
+        guard hasMoreResults, let state = lastRunState else { return }
+        currentResultLimit += pageSize
+        executeRun(state: state, resetPagination: false)
+    }
+
+    private func executeRun(state: QueryState, resetPagination: Bool) {
+        if resetPagination {
+            currentResultLimit = pageSize
+        }
+        lastRunState = state
+
         let runToken = UUID()
         currentRunToken = runToken
 
@@ -49,14 +78,21 @@ final class MetadataSearchController: ObservableObject {
         let hasTagFilters = !state.includeTags.isEmpty || !state.excludeTags.isEmpty
 
         guard !state.scopeURLs.isEmpty else {
-            results = []
-            topFacets = []
+            clearResultsAndCoverage(sortOption: state.sortOption)
             return
         }
 
         let scopeURLs = beginSecurityScope(for: state.scopeURLs)
         guard !scopeURLs.isEmpty else {
+            clearResultsAndCoverage(sortOption: state.sortOption)
             lastError = "macOS denied access to the selected folder."
+            return
+        }
+
+        let cacheKey = makeCacheKey(for: state)
+        if cachedSearchKey != cacheKey {
+            clearCachedSortableResults()
+        } else if serveCachedResultsIfAvailable(state: state, runToken: runToken) {
             return
         }
 
@@ -71,6 +107,7 @@ final class MetadataSearchController: ObservableObject {
         }
 
         stop()
+        clearResultsAndCoverage(sortOption: state.sortOption)
         lastError = SpotlightDiagnostics.failureMessage(for: scopeURLs)
     }
 
@@ -140,6 +177,77 @@ final class MetadataSearchController: ObservableObject {
         return action()
     }
 
+    private func applyResults(_ items: [SearchResultItem],
+                              totalCount: Int?,
+                              hasMore: Bool,
+                              sortOption: SearchResultSortOption,
+                              isPreview: Bool = false) {
+        results = items
+        topFacets = facetCounter.topTags(from: items)
+        knownTotalResults = totalCount
+        hasMoreResults = hasMore
+        resultsSortOption = sortOption
+        isRefiningResults = isPreview
+    }
+
+    private func clearResultsAndCoverage(sortOption: SearchResultSortOption? = nil) {
+        let effectiveSort = sortOption ?? lastRunState?.sortOption ?? resultsSortOption
+        applyResults([],
+                     totalCount: nil,
+                     hasMore: false,
+                     sortOption: effectiveSort,
+                     isPreview: false)
+    }
+
+    private func makeCacheKey(for state: QueryState) -> SearchCacheKey {
+        let scopePaths = state.scopeURLs
+            .map { $0.resolvingSymlinksInPath().standardizedFileURL.path }
+            .sorted()
+        return SearchCacheKey(includeTags: state.includeTags,
+                              excludeTags: state.excludeTags,
+                              scopePaths: scopePaths)
+    }
+
+    private func clearCachedSortableResults() {
+        cachedSearchKey = nil
+        cachedSortableResults = []
+    }
+
+    private func cacheSortableResults(_ items: [SearchResultItem], for state: QueryState) {
+        cachedSearchKey = makeCacheKey(for: state)
+        cachedSortableResults = items
+    }
+
+    private func serveCachedResultsIfAvailable(state: QueryState, runToken: UUID) -> Bool {
+        guard cachedSearchKey == makeCacheKey(for: state),
+              !cachedSortableResults.isEmpty else { return false }
+
+        let cachedItems = cachedSortableResults
+        let sortOption = state.sortOption
+        let limit = currentResultLimit
+        let existingResults = Dictionary(uniqueKeysWithValues: results.map { ($0.url, $0) })
+
+        isSearching = true
+        fallbackQueue.async { [weak self] in
+            guard let self else { return }
+            let page = SearchResultPaginator.page(cachedItems, sortOption: sortOption, limit: limit)
+            let hydrated = self.hydrateVisibleResults(page.visible, existingResults: existingResults)
+
+            DispatchQueue.main.async {
+                guard self.currentRunToken == runToken else { return }
+                self.applyResults(hydrated,
+                                  totalCount: page.totalCount,
+                                  hasMore: page.hasMore,
+                                  sortOption: sortOption,
+                                  isPreview: false)
+                self.isSearching = false
+                self.lastError = nil
+            }
+        }
+
+        return true
+    }
+
 
     private func normalizedTags(primaryTags: [String]?, fallbackTags: [String]? = nil, url: URL) -> [FinderTag] {
         if let tags = primaryTags,
@@ -186,6 +294,54 @@ final class MetadataSearchController: ObservableObject {
                                 fileSizeBytes: metadata?.fileSize.map(Int64.init))
     }
 
+    private func makeSortableResult(url: URL,
+                                    preferredName: String? = nil,
+                                    fallbackName: String? = nil,
+                                    resourceValues: URLResourceValues? = nil) -> SearchResultItem {
+        let displayName = preferredName ?? fallbackName ?? url.lastPathComponent
+        let metadata = resourceValues
+            ?? (try? url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey, .fileSizeKey]))
+
+        return SearchResultItem(url: url,
+                                displayName: displayName,
+                                tags: [],
+                                contentModificationDate: metadata?.contentModificationDate,
+                                creationDate: metadata?.creationDate,
+                                fileSizeBytes: metadata?.fileSize.map(Int64.init))
+    }
+
+    private func hydrateVisibleResults(_ items: [SearchResultItem],
+                                       existingResults: [URL: SearchResultItem] = [:]) -> [SearchResultItem] {
+        items.map { item in
+            let tags = existingResults[item.url]?.tags ?? normalizedTags(primaryTags: nil,
+                                                                         fallbackTags: nil,
+                                                                         url: item.url)
+            return SearchResultItem(url: item.url,
+                                    displayName: item.displayName,
+                                    tags: tags,
+                                    contentModificationDate: item.contentModificationDate,
+                                    creationDate: item.creationDate,
+                                    fileSizeBytes: item.fileSizeBytes)
+        }
+    }
+
+    private func resourceKeysForSort(_ sortOption: SearchResultSortOption) -> Set<URLResourceKey> {
+        var keys: Set<URLResourceKey> = [.localizedNameKey]
+
+        switch sortOption {
+        case .nameAscending, .nameDescending:
+            break
+        case .modifiedNewestFirst, .modifiedOldestFirst:
+            keys.insert(.contentModificationDateKey)
+        case .createdNewestFirst, .createdOldestFirst:
+            keys.insert(.creationDateKey)
+        case .sizeLargestFirst, .sizeSmallestFirst:
+            keys.insert(.fileSizeKey)
+        }
+
+        return keys
+    }
+
     private protocol SearchBackend {
         func start(state: QueryState, scopeURLs: [URL], runToken: UUID) -> Bool
     }
@@ -203,6 +359,7 @@ final class MetadataSearchController: ObservableObject {
             let q = NSMetadataQuery()
             controller.query = q
             q.predicate = SpotlightTagQueryBuilder.predicate(include: state.includeTags, exclude: state.excludeTags)
+            q.sortDescriptors = controller.metadataSortDescriptors(for: state.sortOption)
             q.notificationBatchingInterval = 0.2
 
             controller.isSearching = true
@@ -248,11 +405,7 @@ final class MetadataSearchController: ObservableObject {
                   !arguments.isEmpty else { return false }
 
             controller.isSearching = true
-            let resourceKeys: Set<URLResourceKey> = [.localizedNameKey,
-                                                     .tagNamesKey,
-                                                     .contentModificationDateKey,
-                                                     .creationDateKey,
-                                                     .fileSizeKey]
+            let resourceKeys = controller.resourceKeysForSort(state.sortOption)
 
             controller.fallbackQueue.async { [weak self] in
                 guard let self, let controller = self.controller else { return }
@@ -275,17 +428,15 @@ final class MetadataSearchController: ObservableObject {
                     return
                 }
 
-                var stdoutData = Data()
+                let limit = controller.currentResultLimit
+                var items: [SearchResultItem] = []
+                items.reserveCapacity(limit)
+                var previewHydratedByURL: [URL: SearchResultItem] = [:]
+                var sentPreview = false
+                var stdoutBuffer = Data()
                 var stderrData = Data()
                 let outputGroup = DispatchGroup()
                 let outputQueue = DispatchQueue.global(qos: .userInitiated)
-
-                // Drain both streams while the process is running to avoid pipe backpressure deadlocks.
-                outputGroup.enter()
-                outputQueue.async {
-                    stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-                    outputGroup.leave()
-                }
 
                 outputGroup.enter()
                 outputQueue.async {
@@ -293,11 +444,54 @@ final class MetadataSearchController: ObservableObject {
                     outputGroup.leave()
                 }
 
+                func appendPath(_ path: String) {
+                    let url = URL(fileURLWithPath: path)
+                    let resourceValues = try? url.resourceValues(forKeys: resourceKeys)
+                    let item = controller.makeSortableResult(url: url,
+                                                             preferredName: resourceValues?.localizedName,
+                                                             resourceValues: resourceValues)
+                    items.append(item)
+
+                    if !sentPreview, items.count >= limit {
+                        let previewPage = SearchResultPaginator.page(items,
+                                                                     sortOption: state.sortOption,
+                                                                     limit: limit)
+                        let previewResults = controller.hydrateVisibleResults(previewPage.visible)
+                        previewHydratedByURL = Dictionary(uniqueKeysWithValues: previewResults.map { ($0.url, $0) })
+                        sentPreview = true
+
+                        DispatchQueue.main.async {
+                            guard let controller = self.controller,
+                                  controller.currentRunToken == runToken else { return }
+                            controller.applyResults(previewResults,
+                                                    totalCount: nil,
+                                                    hasMore: true,
+                                                    sortOption: state.sortOption,
+                                                    isPreview: true)
+                        }
+                    }
+                }
+
+                while true {
+                    let chunk = stdoutPipe.fileHandleForReading.availableData
+                    if chunk.isEmpty {
+                        break
+                    }
+                    stdoutBuffer.append(chunk)
+                    let paths = NewlineDelimitedPathParser.consumeAvailableLines(from: &stdoutBuffer, flush: false)
+                    for path in paths {
+                        appendPath(path)
+                    }
+                }
+                let remainingPaths = NewlineDelimitedPathParser.consumeAvailableLines(from: &stdoutBuffer, flush: true)
+                for path in remainingPaths {
+                    appendPath(path)
+                }
+
                 task.waitUntilExit()
                 outputGroup.wait()
                 controller.setMDFindTask(nil)
 
-                let output = String(decoding: stdoutData, as: UTF8.self)
                 let errorOutput = String(decoding: stderrData, as: UTF8.self)
 
                 guard task.terminationStatus == 0 else {
@@ -307,31 +501,21 @@ final class MetadataSearchController: ObservableObject {
                     return
                 }
 
-                let lines = output.split(whereSeparator: \.isNewline)
-                var items: [SearchResultItem] = []
-                items.reserveCapacity(min(lines.count, controller.resultLimit))
-
-                for line in lines {
-                    if items.count >= controller.resultLimit {
-                        break
-                    }
-                    let path = String(line)
-                    guard !path.isEmpty else { continue }
-                    let url = URL(fileURLWithPath: path)
-                    let resourceValues = try? url.resourceValues(forKeys: resourceKeys)
-                    let item = controller.makeResult(url: url,
-                                                     preferredName: resourceValues?.localizedName,
-                                                     primaryTags: nil,
-                                                     fallbackTags: resourceValues?.tagNames,
-                                                     resourceValues: resourceValues)
-                    items.append(item)
-                }
+                let page = SearchResultPaginator.page(items,
+                                                      sortOption: state.sortOption,
+                                                      limit: limit)
+                let visibleResults = controller.hydrateVisibleResults(page.visible,
+                                                                      existingResults: previewHydratedByURL)
 
                 DispatchQueue.main.async {
                     guard let controller = self.controller,
                           controller.currentRunToken == runToken else { return }
-                    controller.results = items
-                    controller.topFacets = controller.facetCounter.topTags(from: items)
+                    controller.cacheSortableResults(items, for: state)
+                    controller.applyResults(visibleResults,
+                                            totalCount: page.totalCount,
+                                            hasMore: page.hasMore,
+                                            sortOption: state.sortOption,
+                                            isPreview: false)
                     controller.isSearching = false
                     controller.lastError = nil
                 }
@@ -360,8 +544,7 @@ final class MetadataSearchController: ObservableObject {
         private func handleFailure(_ message: String, runToken: UUID) {
             DispatchQueue.main.async { [weak controller] in
                 guard let controller, controller.currentRunToken == runToken else { return }
-                controller.results = []
-                controller.topFacets = []
+                controller.clearResultsAndCoverage()
                 controller.isSearching = false
                 controller.lastError = message
             }
@@ -380,31 +563,26 @@ final class MetadataSearchController: ObservableObject {
             guard !scopeURLs.isEmpty else { return false }
 
             controller.isSearching = true
-            let resourceKeys: Set<URLResourceKey> = [.isRegularFileKey,
+            var resourceKeys: Set<URLResourceKey> = [.isRegularFileKey,
                                                      .isDirectoryKey,
-                                                     .localizedNameKey,
-                                                     .tagNamesKey,
-                                                     .contentModificationDateKey,
-                                                     .creationDateKey,
-                                                     .fileSizeKey]
+                                                     .localizedNameKey]
+            resourceKeys.formUnion(controller.resourceKeysForSort(state.sortOption))
             let fm = FileManager.default
 
             controller.fallbackQueue.async { [weak self] in
                 guard let self, let controller = self.controller else { return }
 
                 var collected: [SearchResultItem] = []
-                collected.reserveCapacity(controller.resultLimit)
+                collected.reserveCapacity(controller.currentResultLimit)
+                var sentPreview = false
+                var previewHydratedByURL: [URL: SearchResultItem] = [:]
 
-                scopeLoop: for scope in scopeURLs {
-                    if collected.count >= controller.resultLimit { break }
-
+                for scope in scopeURLs {
                     let scopeValues = try? scope.resourceValues(forKeys: resourceKeys)
                     if scopeValues?.isRegularFile == true {
-                        let item = controller.makeResult(url: scope,
-                                                         preferredName: scopeValues?.localizedName,
-                                                         primaryTags: nil,
-                                                         fallbackTags: scopeValues?.tagNames,
-                                                         resourceValues: scopeValues)
+                        let item = controller.makeSortableResult(url: scope,
+                                                                 preferredName: scopeValues?.localizedName,
+                                                                 resourceValues: scopeValues)
                         collected.append(item)
                         continue
                     }
@@ -418,29 +596,53 @@ final class MetadataSearchController: ObservableObject {
                     }
 
                     for case let fileURL as URL in enumerator {
-                        if collected.count >= controller.resultLimit {
-                            break scopeLoop
-                        }
-
                         let values = try? fileURL.resourceValues(forKeys: resourceKeys)
                         if values?.isDirectory == true {
                             continue
                         }
 
-                        let item = controller.makeResult(url: fileURL,
-                                                         preferredName: values?.localizedName,
-                                                         primaryTags: nil,
-                                                         fallbackTags: values?.tagNames,
-                                                         resourceValues: values)
+                        let item = controller.makeSortableResult(url: fileURL,
+                                                                 preferredName: values?.localizedName,
+                                                                 resourceValues: values)
                         collected.append(item)
+
+                        if !sentPreview,
+                           collected.count >= controller.currentResultLimit {
+                            let previewPage = SearchResultPaginator.page(collected,
+                                                                         sortOption: state.sortOption,
+                                                                         limit: controller.currentResultLimit)
+                            let previewResults = controller.hydrateVisibleResults(previewPage.visible)
+                            previewHydratedByURL = Dictionary(uniqueKeysWithValues: previewResults.map { ($0.url, $0) })
+                            sentPreview = true
+
+                            DispatchQueue.main.async {
+                                guard let controller = self.controller,
+                                      controller.currentRunToken == runToken else { return }
+                                controller.applyResults(previewResults,
+                                                        totalCount: nil,
+                                                        hasMore: true,
+                                                        sortOption: state.sortOption,
+                                                        isPreview: true)
+                            }
+                        }
                     }
                 }
+
+                let page = SearchResultPaginator.page(collected,
+                                                      sortOption: state.sortOption,
+                                                      limit: controller.currentResultLimit)
+                let visibleResults = controller.hydrateVisibleResults(page.visible,
+                                                                      existingResults: previewHydratedByURL)
 
                 DispatchQueue.main.async {
                     guard let controller = self.controller,
                           controller.currentRunToken == runToken else { return }
-                    controller.results = collected
-                    controller.topFacets = controller.facetCounter.topTags(from: collected)
+                    controller.cacheSortableResults(collected, for: state)
+                    controller.applyResults(visibleResults,
+                                            totalCount: page.totalCount,
+                                            hasMore: page.hasMore,
+                                            sortOption: state.sortOption,
+                                            isPreview: false)
                     controller.isSearching = false
                     controller.lastError = nil
                 }
@@ -517,12 +719,13 @@ final class MetadataSearchController: ObservableObject {
 
         // Convert query results to SearchResultItems
         let items = (q.results as? [NSMetadataItem]) ?? []
+        let limit = currentResultLimit
 
         var newResults: [SearchResultItem] = []
-        newResults.reserveCapacity(min(items.count, resultLimit))
+        newResults.reserveCapacity(min(items.count, limit))
 
-        // Cap for now to keep UI snappy; later we can paginate/infinite scroll.
-        for item in items.prefix(resultLimit) {
+        // Render only up to the current page limit; users can request additional pages.
+        for item in items.prefix(limit) {
             guard let url = item.value(forAttribute: NSMetadataItemURLKey) as? URL else { continue }
             let name = (item.value(forAttribute: kMDItemFSName as String) as? String)
             let metadataTags = item.value(forAttribute: SpotlightTagQueryBuilder.metadataUserTagsAttribute) as? [String]
@@ -533,8 +736,34 @@ final class MetadataSearchController: ObservableObject {
             newResults.append(result)
         }
 
-        results = newResults
-        topFacets = facetCounter.topTags(from: newResults)
+        applyResults(newResults,
+                     totalCount: items.count,
+                     hasMore: items.count > limit,
+                     sortOption: lastRunState?.sortOption ?? resultsSortOption,
+                     isPreview: false)
+    }
+
+    private func metadataSortDescriptors(for sortOption: SearchResultSortOption) -> [NSSortDescriptor] {
+        switch sortOption {
+        case .nameAscending:
+            return [NSSortDescriptor(key: kMDItemFSName as String, ascending: true,
+                                     selector: #selector(NSString.localizedCaseInsensitiveCompare(_:)))]
+        case .nameDescending:
+            return [NSSortDescriptor(key: kMDItemFSName as String, ascending: false,
+                                     selector: #selector(NSString.localizedCaseInsensitiveCompare(_:)))]
+        case .modifiedNewestFirst:
+            return [NSSortDescriptor(key: kMDItemContentModificationDate as String, ascending: false)]
+        case .modifiedOldestFirst:
+            return [NSSortDescriptor(key: kMDItemContentModificationDate as String, ascending: true)]
+        case .createdNewestFirst:
+            return [NSSortDescriptor(key: kMDItemFSCreationDate as String, ascending: false)]
+        case .createdOldestFirst:
+            return [NSSortDescriptor(key: kMDItemFSCreationDate as String, ascending: true)]
+        case .sizeLargestFirst:
+            return [NSSortDescriptor(key: kMDItemFSSize as String, ascending: false)]
+        case .sizeSmallestFirst:
+            return [NSSortDescriptor(key: kMDItemFSSize as String, ascending: true)]
+        }
     }
 
     @discardableResult

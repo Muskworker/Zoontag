@@ -30,3 +30,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Fixed a query execution deadlock that could leave searches stuck (spinning throbber) when running broad exclude-only tag filters.
 - Added multi-file result selection (`Cmd`-click) so inspector tag add/remove actions can update all selected files at once.
 - Added a center-pane sort control for search results with common file ordering options (name, modified date, created date, and size).
+- Added explicit result coverage reporting (`N`, `N of M`, or `N+`) and incremental paging with a `Load More` control for large result sets.
+- Added a toolbar `Stop` action to cancel in-progress searches.
+- Updated `Load More` pagination so each page follows the active sort order (new pages append as the next slice of that ordering).
+- Cached sortable search candidates per query so `Load More` and sort changes can reuse the prior scan instead of rescanning the full scope.
+- Added progressive result refinement for large first-time scans (quick preview first, then full sorted page).
+- Streamed `mdfind` output so preview results can render before full command completion.
+- Fixed a crash in streamed `mdfind` parsing when draining buffered paths across multiple partial reads.
+- Prevented immediate re-sorting of stale results on sort changes while a refresh is still in progress.

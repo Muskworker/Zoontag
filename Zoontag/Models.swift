@@ -34,6 +34,74 @@ struct SearchResultItem: Identifiable, Hashable {
     }
 }
 
+struct SearchResultsCoverage: Equatable {
+    let visibleCount: Int
+    let totalCount: Int?
+    let hasMoreResults: Bool
+
+    var resultCountText: String {
+        if let totalCount {
+            if hasMoreResults {
+                return "Results: \(visibleCount) of \(totalCount)"
+            }
+            return "Results: \(totalCount)"
+        }
+
+        if hasMoreResults {
+            return "Results: \(visibleCount)+"
+        }
+        return "Results: \(visibleCount)"
+    }
+
+    var statusText: String? {
+        if let totalCount, hasMoreResults {
+            return "Showing first \(visibleCount) of \(totalCount) results."
+        }
+        if hasMoreResults {
+            return "Showing first \(visibleCount) results. Load more to continue."
+        }
+        return nil
+    }
+}
+
+enum SearchResultPaginator {
+    static func page(_ items: [SearchResultItem],
+                     sortOption: SearchResultSortOption,
+                     limit: Int) -> (visible: [SearchResultItem], totalCount: Int, hasMore: Bool) {
+        let safeLimit = max(0, limit)
+        let sorted = sortOption.sorted(items)
+        let visible = Array(sorted.prefix(safeLimit))
+        return (visible, sorted.count, sorted.count > safeLimit)
+    }
+}
+
+enum NewlineDelimitedPathParser {
+    private static let newlineByte: UInt8 = 0x0A
+
+    static func consumeAvailableLines(from buffer: inout Data, flush: Bool) -> [String] {
+        let consumedEnd: Data.Index
+        if flush {
+            consumedEnd = buffer.endIndex
+        } else if let lastNewlineIndex = buffer.lastIndex(of: newlineByte) {
+            consumedEnd = buffer.index(after: lastNewlineIndex)
+        } else {
+            return []
+        }
+
+        let consumedCount = buffer.distance(from: buffer.startIndex, to: consumedEnd)
+        guard consumedCount > 0 else { return [] }
+
+        let chunk = buffer[..<consumedEnd]
+        let text = String(decoding: chunk, as: UTF8.self)
+        buffer.removeFirst(consumedCount)
+
+        return text
+            .split(whereSeparator: \.isNewline)
+            .map(String.init)
+            .filter { !$0.isEmpty }
+    }
+}
+
 enum SearchResultSortOption: String, CaseIterable, Identifiable {
     case nameAscending
     case nameDescending
@@ -157,7 +225,7 @@ enum SearchResultSortOption: String, CaseIterable, Identifiable {
     }
 }
 
-enum FinderTagColorOption: Int, CaseIterable, Identifiable {
+enum FinderTagColorOption: Int, CaseIterable, Identifiable, Sendable {
     case none = 0
     case gray = 1
     case green = 2
@@ -167,9 +235,9 @@ enum FinderTagColorOption: Int, CaseIterable, Identifiable {
     case red = 6
     case orange = 7
 
-    var id: Int { rawValue }
+    nonisolated var id: Int { rawValue }
 
-    var title: String {
+    nonisolated var title: String {
         switch self {
         case .none: return "No color"
         case .gray: return "Gray"
@@ -182,7 +250,7 @@ enum FinderTagColorOption: Int, CaseIterable, Identifiable {
         }
     }
 
-    var hexValue: String? {
+    nonisolated var hexValue: String? {
         switch self {
         case .none: return nil
         case .gray: return "8E8E93"
@@ -195,26 +263,26 @@ enum FinderTagColorOption: Int, CaseIterable, Identifiable {
         }
     }
 
-    static func from(hex: String?) -> FinderTagColorOption {
+    nonisolated static func from(hex: String?) -> FinderTagColorOption {
         guard let normalized = FinderTag.normalizedHex(hex) else { return .none }
         return allCases.first(where: { $0.hexValue == normalized }) ?? .none
     }
 
-    static func displayName(forHex hex: String?) -> String? {
+    nonisolated static func displayName(forHex hex: String?) -> String? {
         guard let normalized = FinderTag.normalizedHex(hex) else { return nil }
         return allCases.first(where: { $0.hexValue == normalized })?.title
     }
 
-    static func hex(for index: Int) -> String? {
+    nonisolated static func hex(for index: Int) -> String? {
         return FinderTagColorOption(rawValue: index)?.hexValue
     }
 
-    static func colorIndex(forHex hex: String?) -> Int? {
+    nonisolated static func colorIndex(forHex hex: String?) -> Int? {
         guard let normalized = FinderTag.normalizedHex(hex) else { return nil }
         return allCases.first(where: { $0.hexValue == normalized })?.rawValue
     }
 
-    static func colorNameLookup(forDescriptor descriptor: String) -> FinderTagColorOption? {
+    nonisolated static func colorNameLookup(forDescriptor descriptor: String) -> FinderTagColorOption? {
         switch descriptor.lowercased() {
         case "gray", "grey": return .gray
         case "green": return .green
@@ -228,12 +296,12 @@ enum FinderTagColorOption: Int, CaseIterable, Identifiable {
     }
 }
 
-struct FinderTag: Hashable, Identifiable {
+struct FinderTag: Hashable, Identifiable, Sendable {
     let name: String
     let colorHex: String?
-    var id: String { name }
+    nonisolated var id: String { name }
 
-    init?(rawValue: String) {
+    nonisolated init?(rawValue: String) {
         let components = rawValue.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
         guard let nameComponent = components.first else { return nil }
         let trimmedName = nameComponent.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -248,7 +316,7 @@ struct FinderTag: Hashable, Identifiable {
         }
     }
 
-    init(name: String, colorHex: String? = nil) {
+    nonisolated init(name: String, colorHex: String? = nil) {
         self.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if let colorHex {
             self.colorHex = FinderTag.hexValue(from: colorHex)
@@ -257,7 +325,7 @@ struct FinderTag: Hashable, Identifiable {
         }
     }
 
-    private static func hexValue(from descriptor: String) -> String? {
+    nonisolated private static func hexValue(from descriptor: String) -> String? {
         guard !descriptor.isEmpty else { return nil }
 
         let candidate = descriptor.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -279,7 +347,7 @@ struct FinderTag: Hashable, Identifiable {
         return nil
     }
 
-    func metadataRepresentation() -> String {
+    nonisolated func metadataRepresentation() -> String {
         if let index = FinderTagColorOption.colorIndex(forHex: colorHex),
            index != FinderTagColorOption.none.rawValue {
             return "\(name)\n\(index)"
@@ -287,11 +355,11 @@ struct FinderTag: Hashable, Identifiable {
         return name
     }
 
-    static func colorIndex(for hex: String?) -> Int? {
+    nonisolated static func colorIndex(for hex: String?) -> Int? {
         FinderTagColorOption.colorIndex(forHex: hex)
     }
 
-    static func normalizedHex(_ hex: String?) -> String? {
+    nonisolated static func normalizedHex(_ hex: String?) -> String? {
         guard var hex = hex?.trimmingCharacters(in: .whitespacesAndNewlines), !hex.isEmpty else { return nil }
         if hex.hasPrefix("#") {
             hex.removeFirst()
