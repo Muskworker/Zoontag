@@ -2,6 +2,111 @@ import XCTest
 @testable import Zoontag
 
 final class ZoontagTests: XCTestCase {
+    func testFinderTagRawValueParsesNameAndColorIndex() {
+        let parsed = FinderTag(rawValue: "Work\n6")
+
+        XCTAssertEqual(parsed?.name, "Work")
+        XCTAssertEqual(parsed?.colorHex, "FF453A")
+    }
+
+    func testNewlineDelimitedPathParserDefersTrailingPartialLineUntilFlush() {
+        var buffer = Data("/tmp/alpha".utf8)
+
+        let withoutFlush = NewlineDelimitedPathParser.consumeAvailableLines(from: &buffer, flush: false)
+
+        XCTAssertTrue(withoutFlush.isEmpty)
+        XCTAssertEqual(String(decoding: buffer, as: UTF8.self), "/tmp/alpha")
+
+        let withFlush = NewlineDelimitedPathParser.consumeAvailableLines(from: &buffer, flush: true)
+
+        XCTAssertEqual(withFlush, ["/tmp/alpha"])
+        XCTAssertTrue(buffer.isEmpty)
+    }
+
+    func testNewlineDelimitedPathParserConsumesOnlyCompleteLinesWithoutFlush() {
+        var buffer = Data("/tmp/alpha\n/tmp/bravo".utf8)
+
+        let lines = NewlineDelimitedPathParser.consumeAvailableLines(from: &buffer, flush: false)
+
+        XCTAssertEqual(lines, ["/tmp/alpha"])
+        XCTAssertEqual(String(decoding: buffer, as: UTF8.self), "/tmp/bravo")
+    }
+
+    func testNewlineDelimitedPathParserRoundTripsUTF8AcrossChunks() {
+        var buffer = Data()
+        buffer.append(Data("/tmp/cafe".utf8))
+        _ = NewlineDelimitedPathParser.consumeAvailableLines(from: &buffer, flush: false)
+        buffer.append(Data("\u{301}.txt\n".utf8))
+
+        let lines = NewlineDelimitedPathParser.consumeAvailableLines(from: &buffer, flush: false)
+
+        XCTAssertEqual(lines, ["/tmp/cafe\u{301}.txt"])
+        XCTAssertTrue(buffer.isEmpty)
+    }
+
+    func testNewlineDelimitedPathParserFlushAfterPartialDrain() {
+        var buffer = Data("/tmp/alpha\n/tmp/bravo".utf8)
+
+        let first = NewlineDelimitedPathParser.consumeAvailableLines(from: &buffer, flush: false)
+        let second = NewlineDelimitedPathParser.consumeAvailableLines(from: &buffer, flush: true)
+
+        XCTAssertEqual(first, ["/tmp/alpha"])
+        XCTAssertEqual(second, ["/tmp/bravo"])
+        XCTAssertTrue(buffer.isEmpty)
+    }
+
+    func testSearchResultsCoverageShowsKnownTotalWhenComplete() {
+        let coverage = SearchResultsCoverage(visibleCount: 42, totalCount: 42, hasMoreResults: false)
+
+        XCTAssertEqual(coverage.resultCountText, "Results: 42")
+        XCTAssertNil(coverage.statusText)
+    }
+
+    func testSearchResultsCoverageShowsKnownTotalWhenTruncated() {
+        let coverage = SearchResultsCoverage(visibleCount: 5000, totalCount: 7321, hasMoreResults: true)
+
+        XCTAssertEqual(coverage.resultCountText, "Results: 5000 of 7321")
+        XCTAssertEqual(coverage.statusText, "Showing first 5000 of 7321 results.")
+    }
+
+    func testSearchResultsCoverageShowsUnknownTotalWhenTruncated() {
+        let coverage = SearchResultsCoverage(visibleCount: 5000, totalCount: nil, hasMoreResults: true)
+
+        XCTAssertEqual(coverage.resultCountText, "Results: 5000+")
+        XCTAssertEqual(coverage.statusText, "Showing first 5000 results. Load more to continue.")
+    }
+
+    func testSearchResultPaginatorUsesSortedOrderBeforeLimit() {
+        let baseURL = URL(fileURLWithPath: "/tmp")
+        let items = [
+            SearchResultItem(url: baseURL.appending(path: "2.txt"), displayName: "Bravo", tags: []),
+            SearchResultItem(url: baseURL.appending(path: "4.txt"), displayName: "Delta", tags: []),
+            SearchResultItem(url: baseURL.appending(path: "1.txt"), displayName: "Alpha", tags: []),
+            SearchResultItem(url: baseURL.appending(path: "3.txt"), displayName: "Charlie", tags: []),
+        ]
+
+        let page = SearchResultPaginator.page(items, sortOption: .nameAscending, limit: 2)
+
+        XCTAssertEqual(page.totalCount, 4)
+        XCTAssertTrue(page.hasMore)
+        XCTAssertEqual(page.visible.map(\.displayName), ["Alpha", "Bravo"])
+    }
+
+    func testSearchResultPaginatorNextPagePrefixRemainsStable() {
+        let baseURL = URL(fileURLWithPath: "/tmp")
+        let items = [
+            SearchResultItem(url: baseURL.appending(path: "2.txt"), displayName: "Bravo", tags: []),
+            SearchResultItem(url: baseURL.appending(path: "4.txt"), displayName: "Delta", tags: []),
+            SearchResultItem(url: baseURL.appending(path: "1.txt"), displayName: "Alpha", tags: []),
+            SearchResultItem(url: baseURL.appending(path: "3.txt"), displayName: "Charlie", tags: []),
+        ]
+
+        let firstPage = SearchResultPaginator.page(items, sortOption: .nameAscending, limit: 2).visible
+        let secondPage = SearchResultPaginator.page(items, sortOption: .nameAscending, limit: 3).visible
+
+        XCTAssertEqual(Array(secondPage.prefix(firstPage.count)).map(\.id), firstPage.map(\.id))
+    }
+
     func testFacetCounterTalliesTopTags() {
         let counter = FacetCounter()
         let baseURL = URL(fileURLWithPath: "/tmp")

@@ -14,7 +14,6 @@ struct ContentView: View {
     @State private var suppressTagColorChange = false
     @State private var isEditingTags = false
     @State private var highlightedSuggestionID: String?
-    @State private var sortOption: SearchResultSortOption = .createdNewestFirst
 
     @State private var selectedItemIDs: Set<SearchResultItem.ID> = []
     @State private var preferredSelectionID: SearchResultItem.ID?
@@ -67,9 +66,13 @@ struct ContentView: View {
                     if search.isSearching {
                         ProgressView()
                             .controlSize(.small)
+
+                        Button("Stop") {
+                            search.stop()
+                        }
                     }
 
-                    Text("Results: \(search.results.count)")
+                    Text(resultCoverage.resultCountText)
                         .foregroundStyle(.secondary)
 
                     Spacer()
@@ -313,7 +316,7 @@ struct ContentView: View {
             } else {
                 HStack {
                     Spacer()
-                    Picker("Sort", selection: $sortOption) {
+                    Picker("Sort", selection: $state.sortOption) {
                         ForEach(SearchResultSortOption.allCases) { option in
                             Text(option.title)
                                 .tag(option)
@@ -337,6 +340,25 @@ struct ContentView: View {
                         }
                     }
                     .padding()
+                }
+
+                if let statusText = resultsStatusText {
+                    HStack(spacing: 12) {
+                        Text(statusText)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        Spacer()
+
+                        if search.hasMoreResults {
+                            Button("Load More") {
+                                search.loadMoreResults()
+                            }
+                            .disabled(search.isSearching || search.isRefiningResults)
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 10)
                 }
             }
         }
@@ -950,8 +972,24 @@ private struct FacetGroup: Identifiable {
 }
 
 private extension ContentView {
+    var resultCoverage: SearchResultsCoverage {
+        SearchResultsCoverage(visibleCount: search.results.count,
+                              totalCount: search.knownTotalResults,
+                              hasMoreResults: search.hasMoreResults)
+    }
+
+    var resultsStatusText: String? {
+        if search.isRefiningResults {
+            return "Showing quick results while full sorted results load…"
+        }
+        if state.sortOption != search.resultsSortOption && search.isSearching {
+            return "Updating sort order…"
+        }
+        return resultCoverage.statusText
+    }
+
     var sortedResults: [SearchResultItem] {
-        sortOption.sorted(search.results)
+        search.resultsSortOption.sorted(search.results)
     }
 
     var selectedItems: [SearchResultItem] {

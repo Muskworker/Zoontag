@@ -31,6 +31,11 @@ Apple notes that **Open Anyway** is available for about one hour after the block
 ### How to Use
 1. Choose a folder to search.
 2. Browse matching files in the grid, and use the center-pane **Sort** menu to order by name, date modified, date created, or file size.
+   - The toolbar shows result coverage (`Results: N`, `Results: N of M`, or `Results: N+`).
+   - When more matches are available, click **Load More** to fetch the next page in the currently selected sort order.
+   - Additional pages in the same query reuse cached scan candidates for faster follow-up paging and sort changes.
+   - Large first-time searches show quick preview results first, then refine to the full sorted page.
+   - While searching, click **Stop** in the toolbar to cancel the current run.
 3. Use sidebar tag controls to refine:
    - `+` include a tag
    - `-` exclude a tag
@@ -56,6 +61,8 @@ Apple notes that **Open Anyway** is available for about one hour after the block
 - Tag editor autocomplete with keyboard navigation (`Up`/`Down` + `Tab` complete)
 - Multi-file selection (`Cmd`-click) with bulk add/remove Finder tag edits
 - Center-pane sort control (name/date modified/date created/size, ascending and descending)
+- Result coverage indicator with incremental `Load More` paging for large searches
+- Search cancel control (`Stop`) in the toolbar while a query is running
 - Fallback to `mdfind` and filesystem enumeration when needed
 
 ## For Developers
