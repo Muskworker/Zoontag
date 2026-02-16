@@ -12,6 +12,7 @@
 		1685479C2F006A0000BC9972 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1685479D2F006A0000BC9972 /* Models.swift */; };
 		168547A02F006AB900BC9972 /* MetadataSearchController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1685479F2F006AB900BC9972 /* MetadataSearchController.swift */; };
 		168547A22F006AC200BC9972 /* QueryState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 168547A12F006AC200BC9972 /* QueryState.swift */; };
+		16E8112D2F423A0000A1B2C3 /* WorkspaceSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16E8112C2F423A0000A1B2C3 /* WorkspaceSessionStore.swift */; };
 		16A31FBE2F0A1235003D26A0 /* SpotlightDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16A31FBC2F0A1235003D26A0 /* SpotlightDiagnostics.swift */; };
 		16A31FC22F0A220B003D26A0 /* SpotlightTagQueryBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16A31FC12F0A220B003D26A0 /* SpotlightTagQueryBuilder.swift */; };
 		16C5ADF02F1A80000064F0A2 /* FinderTagEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16C5ADEF2F1A80000064F0A2 /* FinderTagEditor.swift */; };
@@ -37,10 +38,11 @@
 		1685479D2F006A0000BC9972 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Models.swift; path = ../Zoontag/Models.swift; sourceTree = "<group>"; };
 		1685479F2F006AB900BC9972 /* MetadataSearchController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MetadataSearchController.swift; path = ../Zoontag/MetadataSearchController.swift; sourceTree = "<group>"; };
 		168547A12F006AC200BC9972 /* QueryState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = QueryState.swift; path = ../Zoontag/QueryState.swift; sourceTree = "<group>"; };
+		16E8112C2F423A0000A1B2C3 /* WorkspaceSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WorkspaceSessionStore.swift; path = ../Zoontag/WorkspaceSessionStore.swift; sourceTree = "<group>"; };
 		16A31FBC2F0A1235003D26A0 /* SpotlightDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SpotlightDiagnostics.swift; path = ../Zoontag/SpotlightDiagnostics.swift; sourceTree = "<group>"; };
 		16A31FC12F0A220B003D26A0 /* SpotlightTagQueryBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SpotlightTagQueryBuilder.swift; path = ../Zoontag/SpotlightTagQueryBuilder.swift; sourceTree = "<group>"; };
-		16D7F0012F1B6006008CCD6F /* PreviewViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PreviewViews.swift; path = ../Zoontag/PreviewViews.swift; sourceTree = "<group>"; };
 		16C5ADEF2F1A80000064F0A2 /* FinderTagEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FinderTagEditor.swift; path = ../Zoontag/FinderTagEditor.swift; sourceTree = "<group>"; };
+		16D7F0012F1B6006008CCD6F /* PreviewViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PreviewViews.swift; path = ../Zoontag/PreviewViews.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -96,6 +98,7 @@
 				1685479D2F006A0000BC9972 /* Models.swift */,
 				1685479F2F006AB900BC9972 /* MetadataSearchController.swift */,
 				168547A12F006AC200BC9972 /* QueryState.swift */,
+				16E8112C2F423A0000A1B2C3 /* WorkspaceSessionStore.swift */,
 				16A31FBC2F0A1235003D26A0 /* SpotlightDiagnostics.swift */,
 				16A31FC12F0A220B003D26A0 /* SpotlightTagQueryBuilder.swift */,
 				16D7F0012F1B6006008CCD6F /* PreviewViews.swift */,
@@ -222,6 +225,7 @@
 				1685479A2F006A0000BC9972 /* FacetCounter.swift in Sources */,
 				168547A02F006AB900BC9972 /* MetadataSearchController.swift in Sources */,
 				168547A22F006AC200BC9972 /* QueryState.swift in Sources */,
+				16E8112D2F423A0000A1B2C3 /* WorkspaceSessionStore.swift in Sources */,
 				1685479C2F006A0000BC9972 /* Models.swift in Sources */,
 				1685478F2F00690000BC9972 /* ZoontagTests.swift in Sources */,
 			);
@@ -373,7 +377,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-					MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ws.musk.Zoontag;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -403,7 +407,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-					MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ws.musk.Zoontag;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;

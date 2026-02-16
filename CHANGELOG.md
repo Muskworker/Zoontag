@@ -38,3 +38,4 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Streamed `mdfind` output so preview results can render before full command completion.
 - Fixed a crash in streamed `mdfind` parsing when draining buffered paths across multiple partial reads.
 - Prevented immediate re-sorting of stale results on sort changes while a refresh is still in progress.
+- Persisted workspace session state across launches (security-scoped folder bookmark, include/exclude filters, sort option, and detail-pane visibility).
