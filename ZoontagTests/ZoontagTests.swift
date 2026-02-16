@@ -321,4 +321,104 @@ final class ZoontagTests: XCTestCase {
         let sorted = SearchResultSortOption.sizeSmallestFirst.sorted(items)
         XCTAssertEqual(sorted.map(\.displayName), ["Small", "Large", "Unknown"])
     }
+
+    func testWorkspaceSessionStoreRestoresSavedQueryAndPaneState() throws {
+        let defaults = try testDefaults()
+        let storageKey = "workspace-session-roundtrip"
+        let store = WorkspaceSessionStore(defaults: defaults,
+                                          storageKey: storageKey,
+                                          createBookmark: { url in Data("bookmark:\(url.path)".utf8) },
+                                          resolveBookmark: { data in
+                                              try Self.resolveBookmark(data, stalePrefix: nil)
+                                          })
+        let scopeURL = URL(fileURLWithPath: "/tmp/zoontag-session")
+        let expectedState = QueryState(includeTags: ["cats", "dogs"],
+                                       excludeTags: ["birds"],
+                                       scopeURLs: [scopeURL],
+                                       sortOption: .nameDescending)
+
+        store.save(queryState: expectedState, isDetailPaneVisible: false)
+        let restored = store.restore()
+
+        XCTAssertEqual(restored?.queryState, expectedState)
+        XCTAssertEqual(restored?.isDetailPaneVisible, false)
+    }
+
+    func testWorkspaceSessionStoreRefreshesStaleBookmarksWhenRestoring() throws {
+        let defaults = try testDefaults()
+        let storageKey = "workspace-session-stale-refresh"
+        let scopeURL = URL(fileURLWithPath: "/tmp/zoontag-stale")
+
+        let initialStore = WorkspaceSessionStore(defaults: defaults,
+                                                 storageKey: storageKey,
+                                                 createBookmark: { url in Data("old:\(url.path)".utf8) },
+                                                 resolveBookmark: { data in
+                                                     try Self.resolveBookmark(data, stalePrefix: "old:")
+                                                 })
+        initialStore.save(queryState: QueryState(scopeURLs: [scopeURL]), isDetailPaneVisible: true)
+
+        let refreshingStore = WorkspaceSessionStore(defaults: defaults,
+                                                    storageKey: storageKey,
+                                                    createBookmark: { url in Data("fresh:\(url.path)".utf8) },
+                                                    resolveBookmark: { data in
+                                                        try Self.resolveBookmark(data, stalePrefix: "old:")
+                                                    })
+        let refreshedSession = refreshingStore.restore()
+
+        XCTAssertEqual(refreshedSession?.queryState.scopeURLs, [scopeURL.standardizedFileURL])
+
+        let freshOnlyStore = WorkspaceSessionStore(defaults: defaults,
+                                                   storageKey: storageKey,
+                                                   createBookmark: { url in Data("fresh:\(url.path)".utf8) },
+                                                   resolveBookmark: { data in
+                                                       try Self.resolveBookmark(data, stalePrefix: nil, allowedPrefixes: ["fresh:"])
+                                                   })
+        let restoredAfterRewrite = freshOnlyStore.restore()
+        XCTAssertEqual(restoredAfterRewrite?.queryState.scopeURLs, [scopeURL.standardizedFileURL])
+    }
+
+    func testWorkspaceSessionStoreDropsInvalidPayloadWhenRestoring() throws {
+        let defaults = try testDefaults()
+        let storageKey = "workspace-session-invalid"
+        defaults.set(Data("not valid json".utf8), forKey: storageKey)
+
+        let store = WorkspaceSessionStore(defaults: defaults,
+                                          storageKey: storageKey,
+                                          createBookmark: { url in Data("bookmark:\(url.path)".utf8) },
+                                          resolveBookmark: { data in
+                                              try Self.resolveBookmark(data, stalePrefix: nil)
+                                          })
+        let restored = store.restore()
+
+        XCTAssertNil(restored)
+        XCTAssertNil(defaults.data(forKey: storageKey))
+    }
+
+    private func testDefaults() throws -> UserDefaults {
+        let suiteName = "ZoontagTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        addTeardownBlock {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        return defaults
+    }
+
+    private static func resolveBookmark(_ data: Data,
+                                        stalePrefix: String?,
+                                        allowedPrefixes: [String] = ["bookmark:", "old:", "fresh:"]) throws -> WorkspaceSessionStore.BookmarkResolution {
+        let value = String(decoding: data, as: UTF8.self)
+        guard let prefix = allowedPrefixes.first(where: { value.hasPrefix($0) }) else {
+            throw BookmarkResolutionError.invalidData
+        }
+
+        let path = String(value.dropFirst(prefix.count))
+        let url = URL(fileURLWithPath: path)
+        let isStale = stalePrefix.map { value.hasPrefix($0) } ?? false
+        return WorkspaceSessionStore.BookmarkResolution(url: url, isStale: isStale)
+    }
+
+    private enum BookmarkResolutionError: Error {
+        case invalidData
+    }
 }

@@ -30,6 +30,7 @@ Apple notes that **Open Anyway** is available for about one hour after the block
 
 ### How to Use
 1. Choose a folder to search.
+   - Zoontag now restores your last session on launch, including selected folder scope, active include/exclude filters, sort option, and inspector pane visibility.
 2. Browse matching files in the grid, and use the center-pane **Sort** menu to order by name, date modified, date created, or file size.
    - The toolbar shows result coverage (`Results: N`, `Results: N of M`, or `Results: N+`).
    - When more matches are available, click **Load More** to fetch the next page in the currently selected sort order.
@@ -64,6 +65,7 @@ Apple notes that **Open Anyway** is available for about one hour after the block
 - Result coverage indicator with incremental `Load More` paging for large searches
 - Search cancel control (`Stop`) in the toolbar while a query is running
 - Fallback to `mdfind` and filesystem enumeration when needed
+- Session persistence across launches for scope bookmarks, filters, sort option, and detail-pane visibility
 
 ## For Developers
 

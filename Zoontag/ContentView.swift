@@ -3,8 +3,10 @@ import AppKit
 
 struct ContentView: View {
     @StateObject private var search = MetadataSearchController()
+    private let sessionStore = WorkspaceSessionStore()
     @State private var state = QueryState()
     @State private var isDetailPaneVisible = true
+    @State private var hasRestoredSession = false
     @State private var queryTagName: String = ""
     @State private var highlightedQuerySuggestionID: String?
     @State private var newTagName: String = ""
@@ -22,6 +24,10 @@ struct ContentView: View {
         splitLayout
             .onChange(of: state) { _, newValue in
                 search.run(state: newValue)
+                persistSession()
+            }
+            .onChange(of: isDetailPaneVisible) { _, _ in
+                persistSession()
             }
             .onChange(of: selectedItemIDs) { _, newSelection in
                 if newSelection.isEmpty {
@@ -54,7 +60,7 @@ struct ContentView: View {
                 }
             }
             .onAppear {
-                // Start blank; user chooses a folder.
+                restorePersistedSessionIfNeeded()
             }
             .frame(minWidth: 1000, minHeight: 650)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -852,6 +858,19 @@ struct ContentView: View {
 
     private func toggleDetailPane() {
         isDetailPaneVisible.toggle()
+    }
+
+    private func restorePersistedSessionIfNeeded() {
+        guard !hasRestoredSession else { return }
+        hasRestoredSession = true
+        guard let restoredSession = sessionStore.restore() else { return }
+
+        state = restoredSession.queryState
+        isDetailPaneVisible = restoredSession.isDetailPaneVisible
+    }
+
+    private func persistSession() {
+        sessionStore.save(queryState: state, isDetailPaneVisible: isDetailPaneVisible)
     }
 
     // MARK: - Chip UI
