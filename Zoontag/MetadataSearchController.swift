@@ -11,6 +11,9 @@ final class MetadataSearchController: ObservableObject {
     @Published private(set) var hasMoreResults: Bool = false
     @Published private(set) var resultsSortOption: SearchResultSortOption = .createdNewestFirst
     @Published private(set) var isRefiningResults: Bool = false
+    // Root cause: result-derived suggestions shrink as filters narrow the live result set, so
+    // query autocomplete needs its own scope-wide catalog that stays independent of the current run.
+    @Published private(set) var scopeTagCatalog: [String: TagAutocompleteEntry] = [:]
 
     private let facetCounter = FacetCounter()
     private let pageSize = 5000
@@ -28,8 +31,12 @@ final class MetadataSearchController: ObservableObject {
     private var cachedSearchKey: SearchCacheKey?
     private var cachedSortableResults: [SearchResultItem] = []
     private let fallbackQueue = DispatchQueue(label: "MetadataSearchController.mdfind", qos: .userInitiated)
+    private let tagIndexQueue = DispatchQueue(label: "MetadataSearchController.tagIndex", qos: .utility)
     private let mdfindTaskLock = NSLock()
     private var mdfindTask: Process?
+    private var currentScopeTagIndexToken = UUID()
+    private var cachedScopeTagIndexKey: ScopeTagIndexKey?
+    private var scopeTagCatalogNeedsRefresh = true
     private let isSandboxed: Bool = {
         return ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
     }()
@@ -49,6 +56,10 @@ final class MetadataSearchController: ObservableObject {
         let scopePaths: [String]
     }
 
+    private struct ScopeTagIndexKey: Equatable {
+        let scopePaths: [String]
+    }
+
     deinit {
         stop()
     }
@@ -61,6 +72,10 @@ final class MetadataSearchController: ObservableObject {
         guard hasMoreResults, let state = lastRunState else { return }
         currentResultLimit += pageSize
         executeRun(state: state, resetPagination: false)
+    }
+
+    func invalidateScopeTagCatalog() {
+        scopeTagCatalogNeedsRefresh = true
     }
 
     private func executeRun(state: QueryState, resetPagination: Bool) {
@@ -78,16 +93,20 @@ final class MetadataSearchController: ObservableObject {
         let hasTagFilters = !state.includeTags.isEmpty || !state.excludeTags.isEmpty
 
         guard !state.scopeURLs.isEmpty else {
+            clearScopeTagCatalog()
             clearResultsAndCoverage(sortOption: state.sortOption)
             return
         }
 
         let scopeURLs = beginSecurityScope(for: state.scopeURLs)
         guard !scopeURLs.isEmpty else {
+            clearScopeTagCatalog()
             clearResultsAndCoverage(sortOption: state.sortOption)
             lastError = "macOS denied access to the selected folder."
             return
         }
+
+        refreshScopeTagCatalogIfNeeded(for: state.scopeURLs)
 
         let cacheKey = makeCacheKey(for: state)
         if cachedSearchKey != cacheKey {
@@ -200,17 +219,32 @@ final class MetadataSearchController: ObservableObject {
     }
 
     private func makeCacheKey(for state: QueryState) -> SearchCacheKey {
-        let scopePaths = state.scopeURLs
-            .map { $0.resolvingSymlinksInPath().standardizedFileURL.path }
-            .sorted()
+        let scopePaths = normalizedScopePaths(for: state.scopeURLs)
         return SearchCacheKey(includeTags: state.includeTags,
                               excludeTags: state.excludeTags,
                               scopePaths: scopePaths)
     }
 
+    private func makeScopeTagIndexKey(for scopeURLs: [URL]) -> ScopeTagIndexKey {
+        ScopeTagIndexKey(scopePaths: normalizedScopePaths(for: scopeURLs))
+    }
+
+    private func normalizedScopePaths(for scopeURLs: [URL]) -> [String] {
+        scopeURLs
+            .map { $0.resolvingSymlinksInPath().standardizedFileURL.path }
+            .sorted()
+    }
+
     private func clearCachedSortableResults() {
         cachedSearchKey = nil
         cachedSortableResults = []
+    }
+
+    private func clearScopeTagCatalog() {
+        currentScopeTagIndexToken = UUID()
+        cachedScopeTagIndexKey = nil
+        scopeTagCatalogNeedsRefresh = true
+        scopeTagCatalog = [:]
     }
 
     private func cacheSortableResults(_ items: [SearchResultItem], for state: QueryState) {
@@ -248,6 +282,46 @@ final class MetadataSearchController: ObservableObject {
         return true
     }
 
+    private func refreshScopeTagCatalogIfNeeded(for scopeURLs: [URL]) {
+        let key = makeScopeTagIndexKey(for: scopeURLs)
+
+        if cachedScopeTagIndexKey != key {
+            cachedScopeTagIndexKey = key
+            scopeTagCatalogNeedsRefresh = true
+            scopeTagCatalog = [:]
+        }
+
+        guard scopeTagCatalogNeedsRefresh else { return }
+        scopeTagCatalogNeedsRefresh = false
+
+        let indexToken = UUID()
+        currentScopeTagIndexToken = indexToken
+
+        tagIndexQueue.async { [weak self] in
+            guard let self else { return }
+
+            let accessibleScopeURLs = self.beginTransientSecurityScope(for: scopeURLs)
+            guard !accessibleScopeURLs.isEmpty else {
+                DispatchQueue.main.async {
+                    guard self.currentScopeTagIndexToken == indexToken,
+                          self.cachedScopeTagIndexKey == key else { return }
+                    self.scopeTagCatalogNeedsRefresh = true
+                    self.scopeTagCatalog = [:]
+                }
+                return
+            }
+
+            defer { self.endSecurityScope(for: accessibleScopeURLs) }
+
+            let catalog = self.buildScopeTagCatalog(scopeURLs: accessibleScopeURLs)
+            DispatchQueue.main.async {
+                guard self.currentScopeTagIndexToken == indexToken,
+                      self.cachedScopeTagIndexKey == key else { return }
+                self.scopeTagCatalog = catalog
+            }
+        }
+    }
+
 
     private func normalizedTags(primaryTags: [String]?, fallbackTags: [String]? = nil, url: URL) -> [FinderTag] {
         if let tags = primaryTags,
@@ -273,6 +347,92 @@ final class MetadataSearchController: ObservableObject {
         }
 
         return []
+    }
+
+    private func buildScopeTagCatalog(scopeURLs: [URL]) -> [String: TagAutocompleteEntry] {
+        if let indexed = buildScopeTagCatalogUsingMDFind(scopeURLs: scopeURLs) {
+            return indexed
+        }
+        return buildScopeTagCatalogByEnumeration(scopeURLs: scopeURLs)
+    }
+
+    private func buildScopeTagCatalogUsingMDFind(scopeURLs: [URL]) -> [String: TagAutocompleteEntry]? {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
+
+        var arguments: [String] = []
+        for url in scopeURLs {
+            arguments.append(contentsOf: ["-onlyin", url.path])
+        }
+        arguments.append("kMDItemUserTags == '*'")
+        task.arguments = arguments
+
+        let stdoutPipe = Pipe()
+        task.standardOutput = stdoutPipe
+        task.standardError = Pipe()
+
+        do {
+            try task.run()
+        } catch {
+            return nil
+        }
+
+        let output = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+        task.waitUntilExit()
+
+        guard task.terminationStatus == 0 else { return nil }
+
+        var catalog: [String: TagAutocompleteEntry] = [:]
+        let paths = String(decoding: output, as: UTF8.self)
+            .split(whereSeparator: \.isNewline)
+            .map(String.init)
+            .filter { !$0.isEmpty }
+
+        for path in paths {
+            let url = URL(fileURLWithPath: path)
+            TagAutocompleteCatalogBuilder.add(normalizedTags(primaryTags: nil, url: url), into: &catalog)
+        }
+
+        return catalog
+    }
+
+    private func buildScopeTagCatalogByEnumeration(scopeURLs: [URL]) -> [String: TagAutocompleteEntry] {
+        let fm = FileManager.default
+        let resourceKeys: Set<URLResourceKey> = [.isRegularFileKey, .isDirectoryKey, .tagNamesKey]
+        var catalog: [String: TagAutocompleteEntry] = [:]
+
+        for scope in scopeURLs {
+            let scopeValues = try? scope.resourceValues(forKeys: resourceKeys)
+            if scopeValues?.isRegularFile == true {
+                TagAutocompleteCatalogBuilder.add(normalizedTags(primaryTags: nil,
+                                                                fallbackTags: scopeValues?.tagNames,
+                                                                url: scope),
+                                                 into: &catalog)
+                continue
+            }
+
+            guard scopeValues?.isDirectory ?? true,
+                  let enumerator = fm.enumerator(at: scope,
+                                                 includingPropertiesForKeys: Array(resourceKeys),
+                                                 options: [.skipsHiddenFiles, .skipsPackageDescendants],
+                                                 errorHandler: nil) else {
+                continue
+            }
+
+            for case let fileURL as URL in enumerator {
+                let values = try? fileURL.resourceValues(forKeys: resourceKeys)
+                if values?.isDirectory == true {
+                    continue
+                }
+
+                TagAutocompleteCatalogBuilder.add(normalizedTags(primaryTags: nil,
+                                                                fallbackTags: values?.tagNames,
+                                                                url: fileURL),
+                                                 into: &catalog)
+            }
+        }
+
+        return catalog
     }
 
     private func makeResult(url: URL,
@@ -788,6 +948,26 @@ final class MetadataSearchController: ObservableObject {
         }
 
         return accessible
+    }
+
+    @discardableResult
+    private func beginTransientSecurityScope(for urls: [URL]) -> [URL] {
+        guard isSandboxed else { return urls }
+
+        var accessible: [URL] = []
+        for url in urls {
+            if url.startAccessingSecurityScopedResource() {
+                accessible.append(url)
+            }
+        }
+        return accessible
+    }
+
+    private func endSecurityScope(for urls: [URL]) {
+        guard isSandboxed else { return }
+        for url in urls {
+            url.stopAccessingSecurityScopedResource()
+        }
     }
 
     private func startQuery(_ query: NSMetadataQuery, scopes: [Any]) -> Bool {

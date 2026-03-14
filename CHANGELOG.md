@@ -39,3 +39,4 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Fixed a crash in streamed `mdfind` parsing when draining buffered paths across multiple partial reads.
 - Prevented immediate re-sorting of stale results on sort changes while a refresh is still in progress.
 - Persisted workspace session state across launches (security-scoped folder bookmark, include/exclude filters, sort option, and detail-pane visibility).
+- Added a background per-scope tag index so sidebar query autocomplete stays global to the selected scope instead of shrinking with the current filtered results.

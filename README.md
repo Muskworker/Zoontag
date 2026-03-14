@@ -40,11 +40,12 @@ Apple notes that **Open Anyway** is available for about one hour after the block
 3. Use sidebar tag controls to refine:
    - `+` include a tag
    - `-` exclude a tag
-   - In **Query > Find tag**, type any tag name (not only top tags), then:
+   - In **Query > Find tag**, type any known tag in the selected scope, then:
      - `+` include typed tag
      - `-` exclude typed tag
      - `x` remove that tag from current query filters
    - `Up` / `Down` navigate autosuggestions, `Tab` accepts highlighted suggestion
+   - Zoontag builds that query autocomplete catalog in the background per selected scope, so suggestions stay complete even after filters narrow the visible results.
 4. Remove active tag chips to widen results.
 5. Select one or more files in the grid:
    - Click to select one file
@@ -58,7 +59,7 @@ Apple notes that **Open Anyway** is available for about one hour after the block
 - Finder-tag search via Spotlight (`NSMetadataQuery`)
 - Include/exclude boolean filtering on tags
 - Sidebar facets computed from the current result set
-- Sidebar query-tag autosuggest input for include/exclude/remove actions on any tag name
+- Sidebar query-tag autosuggest input for include/exclude/remove actions on any known tag in the selected scope
 - Tag editor autocomplete with keyboard navigation (`Up`/`Down` + `Tab` complete)
 - Multi-file selection (`Cmd`-click) with bulk add/remove Finder tag edits
 - Center-pane sort control (name/date modified/date created/size, ascending and descending)
