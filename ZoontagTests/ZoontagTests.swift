@@ -222,6 +222,49 @@ final class ZoontagTests: XCTestCase {
         XCTAssertEqual(suggestions.map(\.id), ["tag-a", "tag-b"])
     }
 
+    func testTagAutocompleteCatalogBuilderDeduplicatesNamesAndPrefersKnownColor() {
+        let catalog = TagAutocompleteCatalogBuilder.catalog(from: [
+            FinderTag(name: "Cat"),
+            FinderTag(name: " cat ", colorHex: "FF453A"),
+            FinderTag(name: "Dog"),
+        ])
+
+        XCTAssertEqual(Set(catalog.keys), ["cat", "dog"])
+        XCTAssertEqual(catalog["cat"]?.displayName, "cat")
+        XCTAssertEqual(catalog["cat"]?.color, .red)
+        XCTAssertEqual(catalog["dog"]?.color, FinderTagColorOption.none)
+    }
+
+    func testTagAutocompleteCatalogBuilderCombinesResultsAndFacets() {
+        let baseURL = URL(fileURLWithPath: "/tmp")
+        let results = [
+            SearchResultItem(url: baseURL.appending(path: "a.jpg"),
+                             displayName: "A",
+                             tags: [FinderTag(name: "Cat")]),
+        ]
+        let facets = [
+            TagFacet(tag: "Blue", count: 3, colorHex: "0A84FF"),
+        ]
+
+        let catalog = TagAutocompleteCatalogBuilder.catalog(from: results, facets: facets)
+        let suggestions = TagAutocompleteLogic.suggestions(for: "bl", in: catalog, limit: 5)
+
+        XCTAssertEqual(catalog["cat"]?.displayName, "Cat")
+        XCTAssertEqual(catalog["blue"]?.color, .blue)
+        XCTAssertEqual(suggestions.map(\.id), ["blue"])
+    }
+
+    func testTagAutocompleteCatalogBuilderAddUpgradesExistingScopeEntry() {
+        var catalog = [
+            "cat": TagAutocompleteEntry(id: "cat", displayName: "Cat", color: .none),
+        ]
+
+        TagAutocompleteCatalogBuilder.add([FinderTag(name: "cat", colorHex: "FF453A")], into: &catalog)
+
+        XCTAssertEqual(catalog["cat"]?.displayName, "cat")
+        XCTAssertEqual(catalog["cat"]?.color, .red)
+    }
+
     func testSelectionTagSummaryCountsDistinctItemsPerTag() {
         let baseURL = URL(fileURLWithPath: "/tmp")
         let items = [

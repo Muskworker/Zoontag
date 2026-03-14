@@ -52,6 +52,9 @@ struct ContentView: View {
                 syncHighlightedSuggestion()
                 syncQueryHighlightedSuggestion()
             }
+            .onChange(of: search.scopeTagCatalog) { _, _ in
+                syncQueryHighlightedSuggestion()
+            }
             .onChange(of: newTagColor) { _, _ in
                 if suppressTagColorChange {
                     suppressTagColorChange = false
@@ -712,6 +715,7 @@ struct ContentView: View {
                         tagEditError = "Updated \(successCount)/\(total) items. \(failurePreview)"
                     }
                 }
+                search.invalidateScopeTagCatalog()
                 search.run(state: state)
                 isEditingTags = false
             }
@@ -722,7 +726,7 @@ struct ContentView: View {
         syncHighlightedSuggestion()
 
         if let resolved = TagAutocompleteLogic.resolvedColor(for: value,
-                                                             in: tagCatalog,
+                                                             in: autocompleteTagCatalog,
                                                              userOverrodeColor: userOverrodeTagColor) {
             setTagColor(resolved, userInitiated: false)
         }
@@ -1045,7 +1049,7 @@ private extension ContentView {
         let trimmed = queryTagName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
-        if let exact = TagAutocompleteLogic.exactMatch(for: trimmed, in: tagCatalog) {
+        if let exact = TagAutocompleteLogic.exactMatch(for: trimmed, in: autocompleteTagCatalog) {
             return exact.displayName
         }
 
@@ -1061,41 +1065,30 @@ private extension ContentView {
         return trimmed
     }
 
-    var tagCatalog: [String: TagAutocompleteEntry] {
-        var catalog: [String: TagAutocompleteEntry] = [:]
+    var editorTagCatalog: [String: TagAutocompleteEntry] {
+        TagAutocompleteCatalogBuilder.catalog(from: search.results, facets: search.topFacets)
+    }
 
-        func store(name: String, colorHex: String?) {
-            let normalized = normalizedTagName(name)
-            guard !normalized.isEmpty else { return }
-            let color = FinderTagColorOption.from(hex: colorHex)
-            if let existing = catalog[normalized] {
-                if existing.color == .none && color != .none {
-                    catalog[normalized] = TagAutocompleteEntry(id: normalized, displayName: name, color: color)
-                }
-            } else {
-                catalog[normalized] = TagAutocompleteEntry(id: normalized, displayName: name, color: color)
-            }
-        }
-
-        for item in search.results {
-            for tag in item.tags {
-                store(name: tag.name, colorHex: tag.colorHex)
-            }
-        }
-
-        for facet in search.topFacets {
-            store(name: facet.tag, colorHex: facet.colorHex)
-        }
-
+    var autocompleteTagCatalog: [String: TagAutocompleteEntry] {
+        var catalog = search.scopeTagCatalog
+        TagAutocompleteCatalogBuilder.add(search.results, into: &catalog)
+        TagAutocompleteCatalogBuilder.add(search.topFacets, into: &catalog)
         return catalog
     }
 
+    var queryTagCatalog: [String: TagAutocompleteEntry] {
+        if autocompleteTagCatalog.isEmpty {
+            return editorTagCatalog
+        }
+        return autocompleteTagCatalog
+    }
+
     var tagSuggestions: [TagAutocompleteEntry] {
-        TagAutocompleteLogic.suggestions(for: newTagName, in: tagCatalog, limit: 5)
+        TagAutocompleteLogic.suggestions(for: newTagName, in: autocompleteTagCatalog, limit: 5)
     }
 
     var queryTagSuggestions: [TagAutocompleteEntry] {
-        TagAutocompleteLogic.suggestions(for: queryTagName, in: tagCatalog, limit: 5)
+        TagAutocompleteLogic.suggestions(for: queryTagName, in: queryTagCatalog, limit: 5)
     }
 
     func normalizedTagName(_ name: String) -> String {

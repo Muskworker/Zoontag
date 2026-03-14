@@ -377,6 +377,70 @@ struct TagAutocompleteEntry: Identifiable, Equatable {
     let color: FinderTagColorOption
 }
 
+enum TagAutocompleteCatalogBuilder {
+    static func catalog(from tags: some Sequence<FinderTag>) -> [String: TagAutocompleteEntry] {
+        var catalog: [String: TagAutocompleteEntry] = [:]
+        add(tags, into: &catalog)
+        return catalog
+    }
+
+    static func catalog(from facets: some Sequence<TagFacet>) -> [String: TagAutocompleteEntry] {
+        var catalog: [String: TagAutocompleteEntry] = [:]
+        add(facets, into: &catalog)
+        return catalog
+    }
+
+    static func catalog(from results: [SearchResultItem],
+                        facets: [TagFacet] = []) -> [String: TagAutocompleteEntry] {
+        var catalog: [String: TagAutocompleteEntry] = [:]
+        add(results, into: &catalog)
+        add(facets, into: &catalog)
+        return catalog
+    }
+
+    static func add(_ tags: some Sequence<FinderTag>,
+                    into catalog: inout [String: TagAutocompleteEntry]) {
+        for tag in tags {
+            store(name: tag.name, colorHex: tag.colorHex, into: &catalog)
+        }
+    }
+
+    static func add(_ facets: some Sequence<TagFacet>,
+                    into catalog: inout [String: TagAutocompleteEntry]) {
+        for facet in facets {
+            store(name: facet.tag, colorHex: facet.colorHex, into: &catalog)
+        }
+    }
+
+    static func add(_ results: some Sequence<SearchResultItem>,
+                    into catalog: inout [String: TagAutocompleteEntry]) {
+        for item in results {
+            add(item.tags, into: &catalog)
+        }
+    }
+
+    private static func store(name: String,
+                              colorHex: String?,
+                              into catalog: inout [String: TagAutocompleteEntry]) {
+        let normalized = TagAutocompleteLogic.normalizedName(name)
+        guard !normalized.isEmpty else { return }
+
+        let color = FinderTagColorOption.from(hex: colorHex)
+        if let existing = catalog[normalized] {
+            if existing.color == .none && color != .none {
+                catalog[normalized] = TagAutocompleteEntry(id: normalized,
+                                                           displayName: name,
+                                                           color: color)
+            }
+            return
+        }
+
+        catalog[normalized] = TagAutocompleteEntry(id: normalized,
+                                                   displayName: name,
+                                                   color: color)
+    }
+}
+
 struct SelectionTagSummary: Identifiable, Equatable {
     let normalizedName: String
     let displayName: String
