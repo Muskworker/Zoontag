@@ -2,71 +2,53 @@
 
 Zoontag is a macOS tag-first file browser. It uses Finder tags and Spotlight to let you drill into files quickly without maintaining a separate media database.
 
+![Zoontag](docs/screenshots/zoontag-main.png)
+
 ## For End Users
 
 ### Requirements
 - macOS 14 or later
 
 ### Get Zoontag
-Current path (always available):
 
-1. Download this repository (or clone it).
-2. Open `Zoontag.xcodeproj` in Xcode.
-3. Run the `Zoontag` scheme.
+1. Go to the [Releases page](https://github.com/Muskworker/Zoontag/releases) and download `Zoontag-macOS.zip`.
+2. Unzip and move `Zoontag.app` to `/Applications`.
+3. Launch Zoontag.
 
-Optional prebuilt package (when available on a tagged release):
-
-1. Open the repository's GitHub **Releases** page.
-2. Download `Zoontag-macOS.zip`.
-3. Unzip and move `Zoontag.app` to `/Applications`.
-4. Launch Zoontag.
-
-If macOS blocks launch because the app is unsigned:
-1. Try to open `Zoontag.app` once, then dismiss the warning.
-2. Open `System Settings > Privacy & Security`.
-3. In the Security section, click **Open Anyway** for Zoontag and confirm.
-
-Apple notes that **Open Anyway** is available for about one hour after the blocked launch attempt.
+> [!NOTE]
+> macOS may block the first launch because the app is unsigned. If that happens:
+> 1. Try to open `Zoontag.app` once, then dismiss the warning.
+> 2. Open **System Settings > Privacy & Security**.
+> 3. Click **Open Anyway** for Zoontag and confirm.
+>
+> Apple notes that **Open Anyway** is available for about one hour after the blocked launch attempt.
 
 ### How to Use
-1. Choose a folder to search.
-   - Zoontag now restores your last session on launch, including selected folder scope, active include/exclude filters, sort option, and inspector pane visibility.
-2. Browse matching files in the grid, and use the center-pane **Sort** menu to order by name, date modified, date created, or file size.
-   - The toolbar shows result coverage (`Results: N`, `Results: N of M`, or `Results: N+`).
-   - When more matches are available, click **Load More** to fetch the next page in the currently selected sort order.
-   - Additional pages in the same query reuse cached scan candidates for faster follow-up paging and sort changes.
-   - Large first-time searches show quick preview results first, then refine to the full sorted page.
-   - While searching, click **Stop** in the toolbar to cancel the current run.
-3. Use sidebar tag controls to refine:
-   - `+` include a tag
-   - `-` exclude a tag
-   - In **Query > Find tag**, type any known tag in the selected scope, then:
-     - `+` include typed tag
-     - `-` exclude typed tag
-     - `x` remove that tag from current query filters
-   - `Up` / `Down` navigate autosuggestions, `Tab` accepts highlighted suggestion
-   - Zoontag builds that query autocomplete catalog in the background per selected scope, so suggestions stay complete even after filters narrow the visible results.
-4. Remove active tag chips to widen results.
-5. Select one or more files in the grid:
-   - Click to select one file
-   - `Cmd`-click to add/remove files from the current selection
-6. In the inspector "Add Tag" input, use autocomplete:
-   - `Up` / `Down` to choose suggestions
-   - `Tab` to accept the highlighted suggestion and apply its known Finder color
-   - Add/remove actions apply to all currently selected files
 
-### Current Capabilities
-- Finder-tag search via Spotlight (`NSMetadataQuery`)
-- Include/exclude boolean filtering on tags
-- Sidebar facets computed from the current result set
-- Sidebar query-tag autosuggest input for include/exclude/remove actions on any known tag in the selected scope
-- Tag editor autocomplete with keyboard navigation (`Up`/`Down` + `Tab` complete)
-- Multi-file selection (`Cmd`-click) with bulk add/remove Finder tag edits
-- Center-pane sort control (name/date modified/date created/size, ascending and descending)
-- Result coverage indicator with incremental `Load More` paging for large searches
-- Search cancel control (`Stop`) in the toolbar while a query is running
-- Fallback to `mdfind` and filesystem enumeration when needed
-- Session persistence across launches for scope bookmarks, filters, sort option, and detail-pane visibility
+#### Choose a scope
+Click the folder button in the toolbar to pick a folder to search. Zoontag restores your last session on launch — including selected scope, active filters, sort order, and inspector pane visibility — so you can pick up right where you left off.
+
+#### Filter by tags
+The sidebar shows tag facets computed from your current results. Click `+` next to any facet tag to include it, or `-` to exclude it. Remove an active chip to widen results back out.
+
+To work with any tag in the selected scope — not just the top facets — use **Query > Find tag**:
+- Type to get autocomplete suggestions; `Up`/`Down` to navigate, `Tab` to accept
+- `+` include the typed tag, `-` exclude it, `x` remove it from current filters
+
+The tag catalog is built in the background per scope, so suggestions stay complete even after filters narrow the visible results.
+
+Use the center-pane **Sort** menu to order results by name, date modified, date created, or file size (ascending or descending). The toolbar shows result coverage — `Results: N`, `Results: N of M`, or `Results: N+`. When more matches are available, click **Load More** to fetch the next page in the active sort order. Click **Stop** to cancel a search in progress.
+
+#### Manage tags on files
+Click a file in the grid to select it; `Cmd`-click to build a multi-file selection. With one or more files selected, use the inspector's **Add Tag** field to apply or remove tags across the whole selection at once. Autocomplete works the same way: `Up`/`Down` to navigate suggestions, `Tab` to accept.
+
+### Features
+- Tag-first file browsing via Spotlight — no separate database required
+- Boolean include/exclude filtering with sidebar facets and full-scope tag autocomplete
+- Bulk tag editing across multi-file selections with keyboard-navigable autocomplete
+- Flexible result sorting (name, dates, size) with incremental `Load More` paging
+- Search cancel (`Stop`) and progressive result refinement for large scopes
+- Session persistence across launches (scope, filters, sort, inspector state)
 
 ## For Developers
 
@@ -76,7 +58,7 @@ Apple notes that **Open Anyway** is available for about one hour after the block
 
 ### Setup
 ```bash
-git clone <repository-url>
+git clone https://github.com/Muskworker/Zoontag
 cd Zoontag
 open Zoontag.xcodeproj
 ```
@@ -92,7 +74,7 @@ xcodebuild test -scheme Zoontag -destination 'platform=macOS' -derivedDataPath "
 ./scripts/package_release.sh
 ```
 
-To publish a packaged download on GitHub Releases, push a `v*` tag (for example `v1.0.0`).
+Pushing a `v*` tag (e.g. `v1.2.0`) triggers the GitHub Actions release workflow, which builds the package and attaches `Zoontag-macOS.zip` and its SHA-256 checksum to the [Releases page](https://github.com/Muskworker/Zoontag/releases) automatically.
 
 ### More Docs
 - Contributor workflow: [CONTRIBUTING.md](CONTRIBUTING.md)
