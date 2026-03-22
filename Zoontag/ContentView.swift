@@ -19,10 +19,14 @@ struct ContentView: View {
 
     @State private var selectedItemIDs: Set<SearchResultItem.ID> = []
     @State private var preferredSelectionID: SearchResultItem.ID?
+    /// Items pinned in the inspector after a tag edit so they remain visible
+    /// even if the edit causes them to drop out of the current search results.
+    @State private var tagEditPinnedItems: [SearchResultItem] = []
 
     var body: some View {
         splitLayout
             .onChange(of: state) { _, newValue in
+                tagEditPinnedItems = []
                 search.run(state: newValue)
                 persistSession()
             }
@@ -407,15 +411,15 @@ struct ContentView: View {
 
     private var inspector: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if selectedItems.isEmpty {
+            if inspectorItems.isEmpty {
                 Text("Select one or more items")
                     .foregroundStyle(.secondary)
                 Spacer()
             } else {
-                let isMultiSelection = selectedItems.count > 1
+                let isMultiSelection = inspectorItems.count > 1
 
                 if isMultiSelection {
-                    Text("\(selectedItems.count) items selected")
+                    Text("\(inspectorItems.count) items selected")
                         .font(.title3)
                     Text("Tag edits apply to all selected items.")
                         .font(.footnote)
@@ -457,8 +461,8 @@ struct ContentView: View {
                                     Text(summary.displayName)
                                         .lineLimit(1)
                                         .frame(maxWidth: .infinity, alignment: .leading)
-                                    if summary.count < selectedItems.count {
-                                        Text("\(summary.count)/\(selectedItems.count)")
+                                    if summary.count < inspectorItems.count {
+                                        Text("\(summary.count)/\(inspectorItems.count)")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
@@ -555,7 +559,7 @@ struct ContentView: View {
                         } label: {
                             Label("Add", systemImage: "plus.circle.fill")
                         }
-                        .disabled(newTagName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedItemIDs.isEmpty || isEditingTags)
+                        .disabled(newTagName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || inspectorItems.isEmpty || isEditingTags)
                     }
 
                     if !tagSuggestions.isEmpty {
@@ -611,9 +615,9 @@ struct ContentView: View {
 
                 HStack {
                     Button("Reveal in Finder") {
-                        NSWorkspace.shared.activateFileViewerSelecting(selectedItems.map(\.url))
+                        NSWorkspace.shared.activateFileViewerSelecting(inspectorItems.map(\.url))
                     }
-                    .disabled(selectedItems.isEmpty)
+                    .disabled(inspectorItems.isEmpty)
 
                     if let item = primarySelectedItem, !isMultiSelection {
                         Button("Open") {
@@ -664,7 +668,7 @@ struct ContentView: View {
     }
 
     private func addTagToSelection() {
-        let targets = selectedItems.map(\.url)
+        let targets = inspectorItems.map(\.url)
         guard !targets.isEmpty else { return }
         let trimmed = newTagName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -675,7 +679,7 @@ struct ContentView: View {
     }
 
     private func removeTagFromSelection(named name: String) {
-        let targets = selectedItems.map(\.url)
+        let targets = inspectorItems.map(\.url)
         guard !targets.isEmpty else { return }
         performTagEdit(targets: targets, resetInput: false) { target in
             try FinderTagEditor.removeTag(named: name, from: target)
@@ -688,13 +692,18 @@ struct ContentView: View {
         isEditingTags = true
         tagEditError = nil
 
+        // Snapshot the inspected items now (main thread) so we can pin them
+        // in the inspector if the refresh drops them from search results.
+        let preEditSnapshot = inspectorItems
+
         Task {
             let total = targets.count
             var failures: [String] = []
+            var updatedTagsByURL: [URL: [FinderTag]] = [:]
 
             for target in targets {
                 do {
-                    _ = try action(target)
+                    updatedTagsByURL[target] = try action(target)
                 } catch {
                     failures.append("\(target.lastPathComponent): \(error.localizedDescription)")
                 }
@@ -715,6 +724,18 @@ struct ContentView: View {
                         tagEditError = "Updated \(successCount)/\(total) items. \(failurePreview)"
                     }
                 }
+                // Pin the edited items with their fresh tags so the inspector
+                // stays populated if they drop out of the refreshed results.
+                tagEditPinnedItems = preEditSnapshot.map { item in
+                    guard let updated = updatedTagsByURL[item.url] else { return item }
+                    return SearchResultItem(url: item.url,
+                                           displayName: item.displayName,
+                                           tags: updated,
+                                           contentModificationDate: item.contentModificationDate,
+                                           creationDate: item.creationDate,
+                                           fileSizeBytes: item.fileSizeBytes)
+                }
+                search.invalidateResultsCache()
                 search.invalidateScopeTagCatalog()
                 search.run(state: state)
                 isEditingTags = false
@@ -1019,15 +1040,22 @@ private extension ContentView {
         sortedResults.filter { selectedItemIDs.contains($0.id) }
     }
 
+    /// The items shown in the inspector: live selection when available, falling
+    /// back to the last tag-edited items so they stay visible after a refresh
+    /// drops them from search results.
+    var inspectorItems: [SearchResultItem] {
+        selectedItems.isEmpty ? tagEditPinnedItems : selectedItems
+    }
+
     var primarySelectedItem: SearchResultItem? {
         if let preferredSelectionID {
-            return selectedItems.first(where: { $0.id == preferredSelectionID })
+            return inspectorItems.first(where: { $0.id == preferredSelectionID })
         }
-        return selectedItems.first
+        return inspectorItems.first
     }
 
     var selectionTagSummaries: [SelectionTagSummary] {
-        SelectionTagSummaryBuilder.build(from: selectedItems)
+        SelectionTagSummaryBuilder.build(from: inspectorItems)
     }
 
     var canApplyTypedTagToQuery: Bool {
