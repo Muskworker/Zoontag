@@ -16,12 +16,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Release packaging pipeline:
   - `scripts/package_release.sh` to build `Zoontag-macOS.zip`
   - GitHub Actions release workflow that uploads package assets on `v*` tags
+- Screenshot (`docs/screenshots/zoontag-main.png`) embedded in README
 
 ### Changed
 - Expanded `.gitignore` for Xcode/macOS and test artifacts.
 - Stopped tracking user-specific Xcode workspace files (`xcuserdata` and breakpoints).
-- Refactored README for end-user and developer onboarding.
-- Clarified README "Get Zoontag" instructions so source build is the default path, release ZIP install is optional when assets are published, and unsigned-app launch guidance matches the current macOS `Open Anyway` flow.
+- Reworked README: prebuilt release download is now the primary install path, source build moved to the developer section, "How to Use" reorganized into scope/filter/manage-tags workflow stages, "Current Capabilities" replaced with a concise feature summary, repository URL placeholder resolved, and unsigned-app guidance reformatted as a note.
 - Lowered `MACOSX_DEPLOYMENT_TARGET` to `14.0` so GitHub Actions `macos-14` runners can build and test successfully.
 - Updated GitHub Actions workflows to run on `macos-latest` and select the latest stable Xcode before test/package steps.
 - Fixed tag editor autocomplete so exact typed tag names consistently apply known Finder colors.
