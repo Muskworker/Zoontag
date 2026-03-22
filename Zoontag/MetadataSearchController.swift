@@ -78,6 +78,13 @@ final class MetadataSearchController: ObservableObject {
         scopeTagCatalogNeedsRefresh = true
     }
 
+    /// Clears the cached search results so the next `run(state:)` performs a
+    /// fresh fetch rather than serving the stale cache.  Call this whenever
+    /// file metadata changes externally (e.g. after a tag edit).
+    func invalidateResultsCache() {
+        clearCachedSortableResults()
+    }
+
     private func executeRun(state: QueryState, resetPagination: Bool) {
         if resetPagination {
             currentResultLimit = pageSize
@@ -201,12 +208,35 @@ final class MetadataSearchController: ObservableObject {
                               hasMore: Bool,
                               sortOption: SearchResultSortOption,
                               isPreview: Bool = false) {
-        results = items
-        topFacets = facetCounter.topTags(from: items)
+        // Client-side filter: mdfind uses the Spotlight index which may lag
+        // behind xattr writes, so a file can appear in results even after its
+        // tags no longer satisfy the current include/exclude filters.  Dropping
+        // such items here keeps facet counts consistent with what's on disk.
+        let filtered = clientSideFilter(items)
+        results = filtered
+        topFacets = facetCounter.topTags(from: filtered)
         knownTotalResults = totalCount
         hasMoreResults = hasMore
         resultsSortOption = sortOption
         isRefiningResults = isPreview
+    }
+
+    /// Returns only the items whose on-disk tags still satisfy the current
+    /// include and exclude filters, using the same case-insensitive comparison
+    /// that tag normalization uses elsewhere in the app.
+    private func clientSideFilter(_ items: [SearchResultItem]) -> [SearchResultItem] {
+        guard let state = lastRunState,
+              !state.includeTags.isEmpty || !state.excludeTags.isEmpty else {
+            return items
+        }
+        let normalize: (String) -> String = { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        let includeLower = state.includeTags.map(normalize)
+        let excludeLower = state.excludeTags.map(normalize)
+        return items.filter { item in
+            let itemNames = item.tags.map { normalize($0.name) }
+            return includeLower.allSatisfy { itemNames.contains($0) }
+                && excludeLower.allSatisfy { !itemNames.contains($0) }
+        }
     }
 
     private func clearResultsAndCoverage(sortOption: SearchResultSortOption? = nil) {
@@ -818,22 +848,14 @@ final class MetadataSearchController: ObservableObject {
     }
 
     private func finderMetadataTags(for url: URL) -> [String]? {
-        if let mdTags = mdItemTags(for: url) {
-            if mdTags.contains(where: { $0.contains("\n") }) {
-                return mdTags
-            }
-
-            if let xattrTags = extendedAttributeTags(for: url) {
-                return xattrTags
-            }
-
-            return mdTags
-        }
-
+        // Prefer xattr: FinderTagEditor writes directly there, so it reflects
+        // tag edits immediately without waiting for Spotlight to re-index.
         if let xattrTags = extendedAttributeTags(for: url) {
             return xattrTags
         }
-
+        if let mdTags = mdItemTags(for: url) {
+            return mdTags
+        }
         return nil
     }
 

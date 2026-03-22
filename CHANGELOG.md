@@ -7,6 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+- Tag edits (add/remove in the inspector) now immediately refresh the left-pane facet counts, the center grid, and the inspector tag list.
+  - Result cache is invalidated after every tag edit so the next search always fetches fresh data.
+  - Tag hydration now reads from extended attributes first (the authoritative, immediately-updated source) instead of the Spotlight MDItem index, which may lag behind writes.
+  - A client-side filter is applied after hydration to drop results whose on-disk tags no longer satisfy the current include/exclude filters, so all facet counts stay consistent when Spotlight hasn't yet re-indexed an edited file.
+  - The inspector panel now remains populated with the edited file(s) and their fresh tags even when a tag edit causes those files to drop out of the search results, allowing further edits without re-selecting.
+
 ### Added
 - Repository scaffolding for public hosting:
   - MIT license
