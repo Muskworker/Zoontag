@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-03-22
+
 ### Fixed
 - Tag edits (add/remove in the inspector) now immediately refresh the left-pane facet counts, the center grid, and the inspector tag list.
   - Result cache is invalidated after every tag edit so the next search always fetches fresh data.
