@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+- Results count label in the toolbar now has balanced horizontal padding, matching the inset of adjacent toolbar buttons.
+- Removed stray `Divider` that added asymmetric left-side spacing to the results count.
+
 ## [1.2.0] - 2026-03-22
 
 ### Fixed

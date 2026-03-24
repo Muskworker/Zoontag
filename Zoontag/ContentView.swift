@@ -74,7 +74,6 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItemGroup {
                     Button("Choose Folder…") { chooseFolder() }
-                    Divider()
 
                     if search.isSearching {
                         ProgressView()
@@ -86,6 +85,7 @@ struct ContentView: View {
                     }
 
                     Text(resultCoverage.resultCountText)
+                        .padding(.horizontal, 8)
                         .foregroundStyle(.secondary)
 
                     Spacer()
