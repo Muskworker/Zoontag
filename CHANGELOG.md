@@ -7,6 +7,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- Two new sort options in the results toolbar: **Tag Count (Fewest)** and **Tag Count (Most)**. Sorting by fewest tags first surfaces untagged and undertagged files so you can systematically improve tagging coverage.
+
 ### Fixed
 - Results count label in the toolbar now has balanced horizontal padding, matching the inset of adjacent toolbar buttons.
 - Removed stray `Divider` that added asymmetric left-side spacing to the results count.

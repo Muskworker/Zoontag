@@ -1,5 +1,5 @@
-import Foundation
 import AppKit
+import Foundation
 
 struct SearchResultItem: Identifiable, Hashable {
     let url: URL
@@ -14,7 +14,8 @@ struct SearchResultItem: Identifiable, Hashable {
          tags: [FinderTag],
          contentModificationDate: Date? = nil,
          creationDate: Date? = nil,
-         fileSizeBytes: Int64? = nil) {
+         fileSizeBytes: Int64? = nil)
+    {
         self.url = url
         self.displayName = displayName
         self.tags = tags
@@ -23,10 +24,15 @@ struct SearchResultItem: Identifiable, Hashable {
         self.fileSizeBytes = fileSizeBytes
     }
 
-    var id: URL { url }
-    var tagNames: [String] { tags.map(\.name) }
+    var id: URL {
+        url
+    }
 
-    // Placeholder thumbnail: file icon. We'll swap to QuickLook thumbnails later.
+    var tagNames: [String] {
+        tags.map(\.name)
+    }
+
+    /// Placeholder thumbnail: file icon. We'll swap to QuickLook thumbnails later.
     func iconImage(size: CGFloat = 64) -> NSImage {
         let img = NSWorkspace.shared.icon(forFile: url.path)
         img.size = NSSize(width: size, height: size)
@@ -67,7 +73,8 @@ struct SearchResultsCoverage: Equatable {
 enum SearchResultPaginator {
     static func page(_ items: [SearchResultItem],
                      sortOption: SearchResultSortOption,
-                     limit: Int) -> (visible: [SearchResultItem], totalCount: Int, hasMore: Bool) {
+                     limit: Int) -> (visible: [SearchResultItem], totalCount: Int, hasMore: Bool)
+    {
         let safeLimit = max(0, limit)
         let sorted = sortOption.sorted(items)
         let visible = Array(sorted.prefix(safeLimit))
@@ -111,19 +118,27 @@ enum SearchResultSortOption: String, CaseIterable, Identifiable {
     case createdOldestFirst
     case sizeLargestFirst
     case sizeSmallestFirst
+    /// Fewest tags first — surfaces untagged and undertagged files.
+    case tagCountFewestFirst
+    /// Most tags first — surfaces the most heavily tagged files.
+    case tagCountMostFirst
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var title: String {
         switch self {
-        case .nameAscending: return "Name (A-Z)"
-        case .nameDescending: return "Name (Z-A)"
-        case .modifiedNewestFirst: return "Date Modified (Newest)"
-        case .modifiedOldestFirst: return "Date Modified (Oldest)"
-        case .createdNewestFirst: return "Date Created (Newest)"
-        case .createdOldestFirst: return "Date Created (Oldest)"
-        case .sizeLargestFirst: return "Size (Largest)"
-        case .sizeSmallestFirst: return "Size (Smallest)"
+        case .nameAscending: "Name (A-Z)"
+        case .nameDescending: "Name (Z-A)"
+        case .modifiedNewestFirst: "Date Modified (Newest)"
+        case .modifiedOldestFirst: "Date Modified (Oldest)"
+        case .createdNewestFirst: "Date Created (Newest)"
+        case .createdOldestFirst: "Date Created (Oldest)"
+        case .sizeLargestFirst: "Size (Largest)"
+        case .sizeSmallestFirst: "Size (Smallest)"
+        case .tagCountFewestFirst: "Tag Count (Fewest)"
+        case .tagCountMostFirst: "Tag Count (Most)"
         }
     }
 
@@ -176,17 +191,27 @@ enum SearchResultSortOption: String, CaseIterable, Identifiable {
                                       descending: false,
                                       lhs: lhs,
                                       rhs: rhs)
+        case .tagCountFewestFirst:
+            let lCount = lhs.tags.count
+            let rCount = rhs.tags.count
+            if lCount != rCount { return lCount < rCount }
+            return compareDisplayName(lhs, rhs) ?? (lhs.url.path < rhs.url.path)
+        case .tagCountMostFirst:
+            let lCount = lhs.tags.count
+            let rCount = rhs.tags.count
+            if lCount != rCount { return lCount > rCount }
+            return compareDisplayName(lhs, rhs) ?? (lhs.url.path < rhs.url.path)
         }
     }
 
     private func compareDisplayName(_ lhs: SearchResultItem, _ rhs: SearchResultItem) -> Bool? {
         switch lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) {
         case .orderedAscending:
-            return true
+            true
         case .orderedDescending:
-            return false
+            false
         case .orderedSame:
-            return nil
+            nil
         }
     }
 
@@ -194,16 +219,17 @@ enum SearchResultSortOption: String, CaseIterable, Identifiable {
                                      _ rhsDate: Date?,
                                      descending: Bool,
                                      lhs: SearchResultItem,
-                                     rhs: SearchResultItem) -> Bool {
+                                     rhs: SearchResultItem) -> Bool
+    {
         switch (lhsDate, rhsDate) {
         case let (left?, right?) where left != right:
-            return descending ? (left > right) : (left < right)
+            descending ? (left > right) : (left < right)
         case (.some, .none):
-            return true
+            true
         case (.none, .some):
-            return false
+            false
         default:
-            return compareDisplayName(lhs, rhs) ?? (lhs.url.path < rhs.url.path)
+            compareDisplayName(lhs, rhs) ?? (lhs.url.path < rhs.url.path)
         }
     }
 
@@ -211,21 +237,22 @@ enum SearchResultSortOption: String, CaseIterable, Identifiable {
                                     _ rhsValue: Int64?,
                                     descending: Bool,
                                     lhs: SearchResultItem,
-                                    rhs: SearchResultItem) -> Bool {
+                                    rhs: SearchResultItem) -> Bool
+    {
         switch (lhsValue, rhsValue) {
         case let (left?, right?) where left != right:
-            return descending ? (left > right) : (left < right)
+            descending ? (left > right) : (left < right)
         case (.some, .none):
-            return true
+            true
         case (.none, .some):
-            return false
+            false
         default:
-            return compareDisplayName(lhs, rhs) ?? (lhs.url.path < rhs.url.path)
+            compareDisplayName(lhs, rhs) ?? (lhs.url.path < rhs.url.path)
         }
     }
 }
 
-enum FinderTagColorOption: Int, CaseIterable, Identifiable, Sendable {
+enum FinderTagColorOption: Int, CaseIterable, Identifiable {
     case none = 0
     case gray = 1
     case green = 2
@@ -235,31 +262,33 @@ enum FinderTagColorOption: Int, CaseIterable, Identifiable, Sendable {
     case red = 6
     case orange = 7
 
-    nonisolated var id: Int { rawValue }
+    nonisolated var id: Int {
+        rawValue
+    }
 
     nonisolated var title: String {
         switch self {
-        case .none: return "No color"
-        case .gray: return "Gray"
-        case .green: return "Green"
-        case .purple: return "Purple"
-        case .blue: return "Blue"
-        case .yellow: return "Yellow"
-        case .red: return "Red"
-        case .orange: return "Orange"
+        case .none: "No color"
+        case .gray: "Gray"
+        case .green: "Green"
+        case .purple: "Purple"
+        case .blue: "Blue"
+        case .yellow: "Yellow"
+        case .red: "Red"
+        case .orange: "Orange"
         }
     }
 
     nonisolated var hexValue: String? {
         switch self {
-        case .none: return nil
-        case .gray: return "8E8E93"
-        case .green: return "32D74B"
-        case .purple: return "BF5AF2"
-        case .blue: return "0A84FF"
-        case .yellow: return "FFD60A"
-        case .red: return "FF453A"
-        case .orange: return "FF9F0A"
+        case .none: nil
+        case .gray: "8E8E93"
+        case .green: "32D74B"
+        case .purple: "BF5AF2"
+        case .blue: "0A84FF"
+        case .yellow: "FFD60A"
+        case .red: "FF453A"
+        case .orange: "FF9F0A"
         }
     }
 
@@ -274,7 +303,7 @@ enum FinderTagColorOption: Int, CaseIterable, Identifiable, Sendable {
     }
 
     nonisolated static func hex(for index: Int) -> String? {
-        return FinderTagColorOption(rawValue: index)?.hexValue
+        FinderTagColorOption(rawValue: index)?.hexValue
     }
 
     nonisolated static func colorIndex(forHex hex: String?) -> Int? {
@@ -284,22 +313,24 @@ enum FinderTagColorOption: Int, CaseIterable, Identifiable, Sendable {
 
     nonisolated static func colorNameLookup(forDescriptor descriptor: String) -> FinderTagColorOption? {
         switch descriptor.lowercased() {
-        case "gray", "grey": return .gray
-        case "green": return .green
-        case "purple": return .purple
-        case "blue": return .blue
-        case "yellow": return .yellow
-        case "red": return .red
-        case "orange": return .orange
-        default: return nil
+        case "gray", "grey": .gray
+        case "green": .green
+        case "purple": .purple
+        case "blue": .blue
+        case "yellow": .yellow
+        case "red": .red
+        case "orange": .orange
+        default: nil
         }
     }
 }
 
-struct FinderTag: Hashable, Identifiable, Sendable {
+struct FinderTag: Hashable, Identifiable {
     let name: String
     let colorHex: String?
-    nonisolated var id: String { name }
+    nonisolated var id: String {
+        name
+    }
 
     nonisolated init?(rawValue: String) {
         let components = rawValue.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
@@ -325,7 +356,7 @@ struct FinderTag: Hashable, Identifiable, Sendable {
         }
     }
 
-    nonisolated private static func hexValue(from descriptor: String) -> String? {
+    private nonisolated static func hexValue(from descriptor: String) -> String? {
         guard !descriptor.isEmpty else { return nil }
 
         let candidate = descriptor.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -336,7 +367,8 @@ struct FinderTag: Hashable, Identifiable, Sendable {
         }
 
         if let index = Int(candidate),
-           let hex = FinderTagColorOption.hex(for: index) {
+           let hex = FinderTagColorOption.hex(for: index)
+        {
             return hex
         }
 
@@ -349,7 +381,8 @@ struct FinderTag: Hashable, Identifiable, Sendable {
 
     nonisolated func metadataRepresentation() -> String {
         if let index = FinderTagColorOption.colorIndex(forHex: colorHex),
-           index != FinderTagColorOption.none.rawValue {
+           index != FinderTagColorOption.none.rawValue
+        {
             return "\(name)\n\(index)"
         }
         return name
@@ -391,7 +424,8 @@ enum TagAutocompleteCatalogBuilder {
     }
 
     static func catalog(from results: [SearchResultItem],
-                        facets: [TagFacet] = []) -> [String: TagAutocompleteEntry] {
+                        facets: [TagFacet] = []) -> [String: TagAutocompleteEntry]
+    {
         var catalog: [String: TagAutocompleteEntry] = [:]
         add(results, into: &catalog)
         add(facets, into: &catalog)
@@ -399,21 +433,24 @@ enum TagAutocompleteCatalogBuilder {
     }
 
     static func add(_ tags: some Sequence<FinderTag>,
-                    into catalog: inout [String: TagAutocompleteEntry]) {
+                    into catalog: inout [String: TagAutocompleteEntry])
+    {
         for tag in tags {
             store(name: tag.name, colorHex: tag.colorHex, into: &catalog)
         }
     }
 
     static func add(_ facets: some Sequence<TagFacet>,
-                    into catalog: inout [String: TagAutocompleteEntry]) {
+                    into catalog: inout [String: TagAutocompleteEntry])
+    {
         for facet in facets {
             store(name: facet.tag, colorHex: facet.colorHex, into: &catalog)
         }
     }
 
     static func add(_ results: some Sequence<SearchResultItem>,
-                    into catalog: inout [String: TagAutocompleteEntry]) {
+                    into catalog: inout [String: TagAutocompleteEntry])
+    {
         for item in results {
             add(item.tags, into: &catalog)
         }
@@ -421,13 +458,14 @@ enum TagAutocompleteCatalogBuilder {
 
     private static func store(name: String,
                               colorHex: String?,
-                              into catalog: inout [String: TagAutocompleteEntry]) {
+                              into catalog: inout [String: TagAutocompleteEntry])
+    {
         let normalized = TagAutocompleteLogic.normalizedName(name)
         guard !normalized.isEmpty else { return }
 
         let color = FinderTagColorOption.from(hex: colorHex)
         if let existing = catalog[normalized] {
-            if existing.color == .none && color != .none {
+            if existing.color == .none, color != .none {
                 catalog[normalized] = TagAutocompleteEntry(id: normalized,
                                                            displayName: name,
                                                            color: color)
@@ -447,7 +485,9 @@ struct SelectionTagSummary: Identifiable, Equatable {
     let colorHex: String?
     let count: Int
 
-    var id: String { normalizedName }
+    var id: String {
+        normalizedName
+    }
 }
 
 enum SelectionTagSummaryBuilder {
@@ -504,13 +544,15 @@ enum TagAutocompleteLogic {
     }
 
     static func exactMatch(for input: String,
-                           in catalog: [String: TagAutocompleteEntry]) -> TagAutocompleteEntry? {
+                           in catalog: [String: TagAutocompleteEntry]) -> TagAutocompleteEntry?
+    {
         catalog[normalizedName(input)]
     }
 
     static func resolvedColor(for input: String,
                               in catalog: [String: TagAutocompleteEntry],
-                              userOverrodeColor: Bool) -> FinderTagColorOption? {
+                              userOverrodeColor: Bool) -> FinderTagColorOption?
+    {
         if let entry = exactMatch(for: input, in: catalog) {
             return entry.color
         }
@@ -521,10 +563,12 @@ enum TagAutocompleteLogic {
     }
 
     static func preferredHighlightedSuggestionID(in suggestions: [TagAutocompleteEntry],
-                                                 previousID: String?) -> String? {
+                                                 previousID: String?) -> String?
+    {
         guard !suggestions.isEmpty else { return nil }
         if let previousID,
-           suggestions.contains(where: { $0.id == previousID }) {
+           suggestions.contains(where: { $0.id == previousID })
+        {
             return previousID
         }
         return suggestions.first?.id
@@ -532,14 +576,16 @@ enum TagAutocompleteLogic {
 
     static func movedHighlightedSuggestionID(in suggestions: [TagAutocompleteEntry],
                                              currentID: String?,
-                                             delta: Int) -> String? {
+                                             delta: Int) -> String?
+    {
         guard !suggestions.isEmpty else { return nil }
         guard delta != 0 else {
             return preferredHighlightedSuggestionID(in: suggestions, previousID: currentID)
         }
 
         if let currentID,
-           let index = suggestions.firstIndex(where: { $0.id == currentID }) {
+           let index = suggestions.firstIndex(where: { $0.id == currentID })
+        {
             let count = suggestions.count
             let nextIndex = (index + delta % count + count) % count
             return suggestions[nextIndex].id
@@ -552,10 +598,12 @@ enum TagAutocompleteLogic {
     }
 
     static func acceptedSuggestion(in suggestions: [TagAutocompleteEntry],
-                                   highlightedID: String?) -> TagAutocompleteEntry? {
+                                   highlightedID: String?) -> TagAutocompleteEntry?
+    {
         guard !suggestions.isEmpty else { return nil }
         if let highlightedID,
-           let match = suggestions.first(where: { $0.id == highlightedID }) {
+           let match = suggestions.first(where: { $0.id == highlightedID })
+        {
             return match
         }
         return suggestions.first
@@ -563,7 +611,8 @@ enum TagAutocompleteLogic {
 
     static func suggestions(for input: String,
                             in catalog: [String: TagAutocompleteEntry],
-                            limit: Int = 5) -> [TagAutocompleteEntry] {
+                            limit: Int = 5) -> [TagAutocompleteEntry]
+    {
         let query = normalizedName(input)
         guard !query.isEmpty else { return [] }
 

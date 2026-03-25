@@ -9,6 +9,55 @@ final class ZoontagTests: XCTestCase {
         XCTAssertEqual(parsed?.colorHex, "FF453A")
     }
 
+    // MARK: - Tag count sort
+
+    func test_tagCountFewestFirst_sortsUntaggedBeforeTagged() {
+        let untagged = SearchResultItem(url: URL(fileURLWithPath: "/a.txt"),
+                                        displayName: "a.txt",
+                                        tags: [])
+        let oneTag = SearchResultItem(url: URL(fileURLWithPath: "/b.txt"),
+                                      displayName: "b.txt",
+                                      tags: [FinderTag(name: "Red")])
+        let twoTags = SearchResultItem(url: URL(fileURLWithPath: "/c.txt"),
+                                       displayName: "c.txt",
+                                       tags: [FinderTag(name: "Red"),
+                                              FinderTag(name: "Blue")])
+
+        let sorted = SearchResultSortOption.tagCountFewestFirst.sorted([twoTags, oneTag, untagged])
+
+        XCTAssertEqual(sorted.map(\.displayName), ["a.txt", "b.txt", "c.txt"])
+    }
+
+    func test_tagCountMostFirst_sortsMostTaggedFirst() {
+        let untagged = SearchResultItem(url: URL(fileURLWithPath: "/a.txt"),
+                                        displayName: "a.txt",
+                                        tags: [])
+        let oneTag = SearchResultItem(url: URL(fileURLWithPath: "/b.txt"),
+                                      displayName: "b.txt",
+                                      tags: [FinderTag(name: "Red")])
+        let twoTags = SearchResultItem(url: URL(fileURLWithPath: "/c.txt"),
+                                       displayName: "c.txt",
+                                       tags: [FinderTag(name: "Red"),
+                                              FinderTag(name: "Blue")])
+
+        let sorted = SearchResultSortOption.tagCountMostFirst.sorted([untagged, twoTags, oneTag])
+
+        XCTAssertEqual(sorted.map(\.displayName), ["c.txt", "b.txt", "a.txt"])
+    }
+
+    func test_tagCountFewestFirst_usesTiebreakNameWhenCountsMatch() {
+        let alpha = SearchResultItem(url: URL(fileURLWithPath: "/alpha.txt"),
+                                     displayName: "alpha.txt",
+                                     tags: [FinderTag(name: "Red")])
+        let beta = SearchResultItem(url: URL(fileURLWithPath: "/beta.txt"),
+                                    displayName: "beta.txt",
+                                    tags: [FinderTag(name: "Blue")])
+
+        let sorted = SearchResultSortOption.tagCountFewestFirst.sorted([beta, alpha])
+
+        XCTAssertEqual(sorted.map(\.displayName), ["alpha.txt", "beta.txt"])
+    }
+
     func testNewlineDelimitedPathParserDefersTrailingPartialLineUntilFlush() {
         var buffer = Data("/tmp/alpha".utf8)
 
@@ -354,7 +403,7 @@ final class ZoontagTests: XCTestCase {
             SearchResultItem(url: baseURL.appending(path: "large.bin"),
                              displayName: "Large",
                              tags: [],
-                             fileSizeBytes: 2_000),
+                             fileSizeBytes: 2000),
             SearchResultItem(url: baseURL.appending(path: "small.bin"),
                              displayName: "Small",
                              tags: [],
@@ -449,7 +498,8 @@ final class ZoontagTests: XCTestCase {
 
     private static func resolveBookmark(_ data: Data,
                                         stalePrefix: String?,
-                                        allowedPrefixes: [String] = ["bookmark:", "old:", "fresh:"]) throws -> WorkspaceSessionStore.BookmarkResolution {
+                                        allowedPrefixes: [String] = ["bookmark:", "old:", "fresh:"]) throws -> WorkspaceSessionStore.BookmarkResolution
+    {
         let value = String(decoding: data, as: UTF8.self)
         guard let prefix = allowedPrefixes.first(where: { value.hasPrefix($0) }) else {
             throw BookmarkResolutionError.invalidData
