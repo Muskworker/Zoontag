@@ -17,6 +17,7 @@
 		16A31FC22F0A220B003D26A0 /* SpotlightTagQueryBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16A31FC12F0A220B003D26A0 /* SpotlightTagQueryBuilder.swift */; };
 		16C5ADF02F1A80000064F0A2 /* FinderTagEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16C5ADEF2F1A80000064F0A2 /* FinderTagEditor.swift */; };
 		16D7F0022F1B6006008CCD6F /* PreviewViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16D7F0012F1B6006008CCD6F /* PreviewViews.swift */; };
+		16B0C4322FB00000AABC1111 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 16B0C4312FB00000AABC1111 /* Localizable.xcstrings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -43,6 +44,7 @@
 		16A31FC12F0A220B003D26A0 /* SpotlightTagQueryBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SpotlightTagQueryBuilder.swift; path = ../Zoontag/SpotlightTagQueryBuilder.swift; sourceTree = "<group>"; };
 		16C5ADEF2F1A80000064F0A2 /* FinderTagEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FinderTagEditor.swift; path = ../Zoontag/FinderTagEditor.swift; sourceTree = "<group>"; };
 		16D7F0012F1B6006008CCD6F /* PreviewViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PreviewViews.swift; path = ../Zoontag/PreviewViews.swift; sourceTree = "<group>"; };
+		16B0C4312FB00000AABC1111 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xcstrings; name = Localizable.xcstrings; path = ../Zoontag/Localizable.xcstrings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -103,6 +105,7 @@
 				16A31FC12F0A220B003D26A0 /* SpotlightTagQueryBuilder.swift */,
 				16D7F0012F1B6006008CCD6F /* PreviewViews.swift */,
 				16C5ADEF2F1A80000064F0A2 /* FinderTagEditor.swift */,
+				16B0C4312FB00000AABC1111 /* Localizable.xcstrings */,
 			);
 			path = ZoontagTests;
 			sourceTree = "<group>";
@@ -201,6 +204,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				16B0C4322FB00000AABC1111 /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

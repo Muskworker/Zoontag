@@ -48,23 +48,23 @@ struct SearchResultsCoverage: Equatable {
     var resultCountText: String {
         if let totalCount {
             if hasMoreResults {
-                return "Results: \(visibleCount) of \(totalCount)"
+                return String(localized: "Results: \(visibleCount) of \(totalCount)")
             }
-            return "Results: \(totalCount)"
+            return String(localized: "Results: \(totalCount)")
         }
 
         if hasMoreResults {
-            return "Results: \(visibleCount)+"
+            return String(localized: "Results: \(visibleCount)+")
         }
-        return "Results: \(visibleCount)"
+        return String(localized: "Results: \(visibleCount)")
     }
 
     var statusText: String? {
         if let totalCount, hasMoreResults {
-            return "Showing first \(visibleCount) of \(totalCount) results."
+            return String(localized: "Showing first \(visibleCount) of \(totalCount) results.")
         }
         if hasMoreResults {
-            return "Showing first \(visibleCount) results. Load more to continue."
+            return String(localized: "Showing first \(visibleCount) results. Load more to continue.")
         }
         return nil
     }
@@ -129,16 +129,16 @@ enum SearchResultSortOption: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .nameAscending: "Name (A-Z)"
-        case .nameDescending: "Name (Z-A)"
-        case .modifiedNewestFirst: "Date Modified (Newest)"
-        case .modifiedOldestFirst: "Date Modified (Oldest)"
-        case .createdNewestFirst: "Date Created (Newest)"
-        case .createdOldestFirst: "Date Created (Oldest)"
-        case .sizeLargestFirst: "Size (Largest)"
-        case .sizeSmallestFirst: "Size (Smallest)"
-        case .tagCountFewestFirst: "Tag Count (Fewest)"
-        case .tagCountMostFirst: "Tag Count (Most)"
+        case .nameAscending: String(localized: "Name (A-Z)")
+        case .nameDescending: String(localized: "Name (Z-A)")
+        case .modifiedNewestFirst: String(localized: "Date Modified (Newest)")
+        case .modifiedOldestFirst: String(localized: "Date Modified (Oldest)")
+        case .createdNewestFirst: String(localized: "Date Created (Newest)")
+        case .createdOldestFirst: String(localized: "Date Created (Oldest)")
+        case .sizeLargestFirst: String(localized: "Size (Largest)")
+        case .sizeSmallestFirst: String(localized: "Size (Smallest)")
+        case .tagCountFewestFirst: String(localized: "Tag Count (Fewest)")
+        case .tagCountMostFirst: String(localized: "Tag Count (Most)")
         }
     }
 
@@ -268,14 +268,14 @@ enum FinderTagColorOption: Int, CaseIterable, Identifiable {
 
     nonisolated var title: String {
         switch self {
-        case .none: "No color"
-        case .gray: "Gray"
-        case .green: "Green"
-        case .purple: "Purple"
-        case .blue: "Blue"
-        case .yellow: "Yellow"
-        case .red: "Red"
-        case .orange: "Orange"
+        case .none: String(localized: "No color")
+        case .gray: String(localized: "Gray")
+        case .green: String(localized: "Green")
+        case .purple: String(localized: "Purple")
+        case .blue: String(localized: "Blue")
+        case .yellow: String(localized: "Yellow")
+        case .red: String(localized: "Red")
+        case .orange: String(localized: "Orange")
         }
     }
 

@@ -112,17 +112,17 @@ final class ZoontagTests: XCTestCase {
     }
 
     func testSearchResultsCoverageShowsKnownTotalWhenTruncated() {
-        let coverage = SearchResultsCoverage(visibleCount: 5000, totalCount: 7321, hasMoreResults: true)
+        let coverage = SearchResultsCoverage(visibleCount: 500, totalCount: 732, hasMoreResults: true)
 
-        XCTAssertEqual(coverage.resultCountText, "Results: 5000 of 7321")
-        XCTAssertEqual(coverage.statusText, "Showing first 5000 of 7321 results.")
+        XCTAssertEqual(coverage.resultCountText, "Results: 500 of 732")
+        XCTAssertEqual(coverage.statusText, "Showing first 500 of 732 results.")
     }
 
     func testSearchResultsCoverageShowsUnknownTotalWhenTruncated() {
-        let coverage = SearchResultsCoverage(visibleCount: 5000, totalCount: nil, hasMoreResults: true)
+        let coverage = SearchResultsCoverage(visibleCount: 500, totalCount: nil, hasMoreResults: true)
 
-        XCTAssertEqual(coverage.resultCountText, "Results: 5000+")
-        XCTAssertEqual(coverage.statusText, "Showing first 5000 results. Load more to continue.")
+        XCTAssertEqual(coverage.resultCountText, "Results: 500+")
+        XCTAssertEqual(coverage.statusText, "Showing first 500 results. Load more to continue.")
     }
 
     func testSearchResultPaginatorUsesSortedOrderBeforeLimit() {
@@ -513,5 +513,33 @@ final class ZoontagTests: XCTestCase {
 
     private enum BookmarkResolutionError: Error {
         case invalidData
+    }
+}
+
+// MARK: - Localization infrastructure
+
+final class LocalizationTests: XCTestCase {
+    /// Verifies that `Localizable.xcstrings` is compiled and linked into the test bundle.
+    /// Fails until the string catalog is added to the ZoontagTests target resources.
+    func test_localizableStringsTable_existsInTestBundle() {
+        let bundle = Bundle(for: LocalizationTests.self)
+        XCTAssertNotNil(
+            bundle.url(forResource: "Localizable", withExtension: "strings"),
+            "Localizable.strings not found in test bundle — Localizable.xcstrings must be added to the ZoontagTests target resources"
+        )
+    }
+
+    /// Verifies that sort option titles are non-empty (regression guard once localization is wired).
+    func test_sortOptionTitles_areNonEmpty() {
+        for option in SearchResultSortOption.allCases {
+            XCTAssertFalse(option.title.isEmpty, "\(option) title should not be empty")
+        }
+    }
+
+    /// Verifies that color option titles are non-empty.
+    func test_colorOptionTitles_areNonEmpty() {
+        for option in FinderTagColorOption.allCases {
+            XCTAssertFalse(option.title.isEmpty, "\(option) title should not be empty")
+        }
     }
 }

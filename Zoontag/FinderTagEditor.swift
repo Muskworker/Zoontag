@@ -1,6 +1,6 @@
-import Foundation
 import CoreServices
 import Darwin
+import Foundation
 
 enum FinderTagEditorError: LocalizedError {
     case invalidFileURL
@@ -12,18 +12,18 @@ enum FinderTagEditorError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidFileURL:
-            return "Invalid file URL."
+            return String(localized: "Invalid file URL.")
         case .decodingFailed:
-            return "Could not decode Finder tags."
+            return String(localized: "Could not decode Finder tags.")
         case .encodingFailed:
-            return "Could not encode Finder tags."
-        case .attributeOperationFailed(let code):
+            return String(localized: "Could not encode Finder tags.")
+        case let .attributeOperationFailed(code):
             if let cString = strerror(code) {
                 return String(cString: cString)
             }
-            return "Unknown file attribute error."
+            return String(localized: "Unknown file attribute error.")
         case .insufficientTagMetadata:
-            return "macOS did not expose full Finder tag metadata for this file."
+            return String(localized: "macOS did not expose full Finder tag metadata for this file.")
         }
     }
 }
@@ -101,21 +101,23 @@ private extension FinderTagEditor {
     }
 
     static func ensureWritable(for payload: TagPayload) throws {
-        if payload.source == .resourceValues && !payload.values.isEmpty {
+        if payload.source == .resourceValues, !payload.values.isEmpty {
             throw FinderTagEditorError.insufficientTagMetadata
         }
     }
 
     static func rawTagPayload(for url: URL) throws -> TagPayload {
         if let data = try readExtendedAttribute(name: attributeName, url: url),
-           let decoded = try decodeTagList(from: data) {
+           let decoded = try decodeTagList(from: data)
+        {
             return TagPayload(values: decoded, source: .extendedAttribute)
         }
         if let metadata = metadataTagValues(for: url) {
             return TagPayload(values: metadata, source: .metadata)
         }
         if let resourceValues = try? url.resourceValues(forKeys: [.tagNamesKey]),
-           let tagNames = resourceValues.tagNames {
+           let tagNames = resourceValues.tagNames
+        {
             return TagPayload(values: tagNames, source: .resourceValues)
         }
         return TagPayload(values: [], source: .none)
@@ -152,7 +154,7 @@ private extension FinderTagEditor {
     }
 
     static func readExtendedAttribute(name: String, url: URL) throws -> Data? {
-        return try url.withUnsafeFileSystemRepresentation { path -> Data? in
+        try url.withUnsafeFileSystemRepresentation { path -> Data? in
             guard let path else { throw FinderTagEditorError.invalidFileURL }
             let size = getxattr(path, name, nil, 0, 0, 0)
             if size == -1 {
@@ -188,7 +190,7 @@ private extension FinderTagEditor {
         try url.withUnsafeFileSystemRepresentation { path in
             guard let path else { throw FinderTagEditorError.invalidFileURL }
             let result = removexattr(path, name, 0)
-            if result == -1 && errno != ENOATTR {
+            if result == -1, errno != ENOATTR {
                 throw FinderTagEditorError.attributeOperationFailed(errno: errno)
             }
         }
