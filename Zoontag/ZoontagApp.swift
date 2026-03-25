@@ -8,7 +8,7 @@ struct ZoontagApp: App {
         }
         .windowStyle(.titleBar)
         .commands {
-            CommandGroup(replacing: .sidebar) { }
+            CommandGroup(replacing: .sidebar) {}
         }
     }
 }
