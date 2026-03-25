@@ -1,7 +1,7 @@
-import Foundation
 import Combine
 import CoreServices
 import Darwin
+import Foundation
 
 final class MetadataSearchController: ObservableObject {
     @Published private(set) var results: [SearchResultItem] = []
@@ -11,8 +11,8 @@ final class MetadataSearchController: ObservableObject {
     @Published private(set) var hasMoreResults: Bool = false
     @Published private(set) var resultsSortOption: SearchResultSortOption = .createdNewestFirst
     @Published private(set) var isRefiningResults: Bool = false
-    // Root cause: result-derived suggestions shrink as filters narrow the live result set, so
-    // query autocomplete needs its own scope-wide catalog that stays independent of the current run.
+    /// Root cause: result-derived suggestions shrink as filters narrow the live result set, so
+    /// query autocomplete needs its own scope-wide catalog that stays independent of the current run.
     @Published private(set) var scopeTagCatalog: [String: TagAutocompleteEntry] = [:]
 
     private let facetCounter = FacetCounter()
@@ -20,7 +20,7 @@ final class MetadataSearchController: ObservableObject {
     private var currentResultLimit = 5000
     private let enableMetadataQuery = false
 
-    // Exposed facets (computed from results)
+    /// Exposed facets (computed from results)
     @Published private(set) var topFacets: [TagFacet] = []
 
     private var query: NSMetadataQuery?
@@ -37,9 +37,8 @@ final class MetadataSearchController: ObservableObject {
     private var currentScopeTagIndexToken = UUID()
     private var cachedScopeTagIndexKey: ScopeTagIndexKey?
     private var scopeTagCatalogNeedsRefresh = true
-    private let isSandboxed: Bool = {
-        return ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
-    }()
+    private let isSandboxed: Bool = ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+
     private lazy var metadataBackend = MetadataQueryBackend(controller: self)
     private lazy var mdfindBackend = MDFindBackend(controller: self)
     private lazy var enumerationBackend = EnumerationBackend(controller: self)
@@ -127,7 +126,8 @@ final class MetadataSearchController: ObservableObject {
             if execute(strategy,
                        state: state,
                        scopeURLs: scopeURLs,
-                       runToken: runToken) {
+                       runToken: runToken)
+            {
                 return
             }
         }
@@ -149,14 +149,15 @@ final class MetadataSearchController: ObservableObject {
     private func execute(_ strategy: SearchStrategy,
                          state: QueryState,
                          scopeURLs: [URL],
-                         runToken: UUID) -> Bool {
+                         runToken: UUID) -> Bool
+    {
         switch strategy {
         case .metadataQuery:
-            return metadataBackend.start(state: state, scopeURLs: scopeURLs, runToken: runToken)
+            metadataBackend.start(state: state, scopeURLs: scopeURLs, runToken: runToken)
         case .mdfind:
-            return mdfindBackend.start(state: state, scopeURLs: scopeURLs, runToken: runToken)
+            mdfindBackend.start(state: state, scopeURLs: scopeURLs, runToken: runToken)
         case .enumerate:
-            return enumerationBackend.start(state: state, scopeURLs: scopeURLs, runToken: runToken)
+            enumerationBackend.start(state: state, scopeURLs: scopeURLs, runToken: runToken)
         }
     }
 
@@ -207,7 +208,8 @@ final class MetadataSearchController: ObservableObject {
                               totalCount: Int?,
                               hasMore: Bool,
                               sortOption: SearchResultSortOption,
-                              isPreview: Bool = false) {
+                              isPreview: Bool = false)
+    {
         // Client-side filter: mdfind uses the Spotlight index which may lag
         // behind xattr writes, so a file can appear in results even after its
         // tags no longer satisfy the current include/exclude filters.  Dropping
@@ -226,7 +228,8 @@ final class MetadataSearchController: ObservableObject {
     /// that tag normalization uses elsewhere in the app.
     private func clientSideFilter(_ items: [SearchResultItem]) -> [SearchResultItem] {
         guard let state = lastRunState,
-              !state.includeTags.isEmpty || !state.excludeTags.isEmpty else {
+              !state.includeTags.isEmpty || !state.excludeTags.isEmpty
+        else {
             return items
         }
         let normalize: (String) -> String = { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
@@ -295,7 +298,7 @@ final class MetadataSearchController: ObservableObject {
         fallbackQueue.async { [weak self] in
             guard let self else { return }
             let page = SearchResultPaginator.page(cachedItems, sortOption: sortOption, limit: limit)
-            let hydrated = self.hydrateVisibleResults(page.visible, existingResults: existingResults)
+            let hydrated = hydrateVisibleResults(page.visible, existingResults: existingResults)
 
             DispatchQueue.main.async {
                 guard self.currentRunToken == runToken else { return }
@@ -330,7 +333,7 @@ final class MetadataSearchController: ObservableObject {
         tagIndexQueue.async { [weak self] in
             guard let self else { return }
 
-            let accessibleScopeURLs = self.beginTransientSecurityScope(for: scopeURLs)
+            let accessibleScopeURLs = beginTransientSecurityScope(for: scopeURLs)
             guard !accessibleScopeURLs.isEmpty else {
                 DispatchQueue.main.async {
                     guard self.currentScopeTagIndexToken == indexToken,
@@ -343,7 +346,7 @@ final class MetadataSearchController: ObservableObject {
 
             defer { self.endSecurityScope(for: accessibleScopeURLs) }
 
-            let catalog = self.buildScopeTagCatalog(scopeURLs: accessibleScopeURLs)
+            let catalog = buildScopeTagCatalog(scopeURLs: accessibleScopeURLs)
             DispatchQueue.main.async {
                 guard self.currentScopeTagIndexToken == indexToken,
                       self.cachedScopeTagIndexKey == key else { return }
@@ -352,27 +355,30 @@ final class MetadataSearchController: ObservableObject {
         }
     }
 
-
     private func normalizedTags(primaryTags: [String]?, fallbackTags: [String]? = nil, url: URL) -> [FinderTag] {
         if let tags = primaryTags,
-           let parsed = parseFinderTags(from: tags) {
+           let parsed = parseFinderTags(from: tags)
+        {
             return parsed
         }
 
         if let mdTags = finderMetadataTags(for: url),
-           let parsed = parseFinderTags(from: mdTags) {
+           let parsed = parseFinderTags(from: mdTags)
+        {
             return parsed
         }
 
         if let fallback = fallbackTags,
-           let parsed = parseFinderTags(from: fallback) {
+           let parsed = parseFinderTags(from: fallback)
+        {
             return parsed
         }
 
         if fallbackTags == nil,
            let resourceValues = try? url.resourceValues(forKeys: [.tagNamesKey]),
            let tagNames = resourceValues.tagNames,
-           let parsed = parseFinderTags(from: tagNames) {
+           let parsed = parseFinderTags(from: tagNames)
+        {
             return parsed
         }
 
@@ -435,9 +441,9 @@ final class MetadataSearchController: ObservableObject {
             let scopeValues = try? scope.resourceValues(forKeys: resourceKeys)
             if scopeValues?.isRegularFile == true {
                 TagAutocompleteCatalogBuilder.add(normalizedTags(primaryTags: nil,
-                                                                fallbackTags: scopeValues?.tagNames,
-                                                                url: scope),
-                                                 into: &catalog)
+                                                                 fallbackTags: scopeValues?.tagNames,
+                                                                 url: scope),
+                                                  into: &catalog)
                 continue
             }
 
@@ -445,7 +451,8 @@ final class MetadataSearchController: ObservableObject {
                   let enumerator = fm.enumerator(at: scope,
                                                  includingPropertiesForKeys: Array(resourceKeys),
                                                  options: [.skipsHiddenFiles, .skipsPackageDescendants],
-                                                 errorHandler: nil) else {
+                                                 errorHandler: nil)
+            else {
                 continue
             }
 
@@ -456,9 +463,9 @@ final class MetadataSearchController: ObservableObject {
                 }
 
                 TagAutocompleteCatalogBuilder.add(normalizedTags(primaryTags: nil,
-                                                                fallbackTags: values?.tagNames,
-                                                                url: fileURL),
-                                                 into: &catalog)
+                                                                 fallbackTags: values?.tagNames,
+                                                                 url: fileURL),
+                                                  into: &catalog)
             }
         }
 
@@ -470,7 +477,8 @@ final class MetadataSearchController: ObservableObject {
                             fallbackName: String? = nil,
                             primaryTags: [String]? = nil,
                             fallbackTags: [String]? = nil,
-                            resourceValues: URLResourceValues? = nil) -> SearchResultItem {
+                            resourceValues: URLResourceValues? = nil) -> SearchResultItem
+    {
         let displayName = preferredName ?? fallbackName ?? url.lastPathComponent
         let tags = normalizedTags(primaryTags: primaryTags, fallbackTags: fallbackTags, url: url)
         let metadata = resourceValues
@@ -487,7 +495,8 @@ final class MetadataSearchController: ObservableObject {
     private func makeSortableResult(url: URL,
                                     preferredName: String? = nil,
                                     fallbackName: String? = nil,
-                                    resourceValues: URLResourceValues? = nil) -> SearchResultItem {
+                                    resourceValues: URLResourceValues? = nil) -> SearchResultItem
+    {
         let displayName = preferredName ?? fallbackName ?? url.lastPathComponent
         let metadata = resourceValues
             ?? (try? url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey, .fileSizeKey]))
@@ -501,7 +510,8 @@ final class MetadataSearchController: ObservableObject {
     }
 
     private func hydrateVisibleResults(_ items: [SearchResultItem],
-                                       existingResults: [URL: SearchResultItem] = [:]) -> [SearchResultItem] {
+                                       existingResults: [URL: SearchResultItem] = [:]) -> [SearchResultItem]
+    {
         items.map { item in
             let tags = existingResults[item.url]?.tags ?? normalizedTags(primaryTags: nil,
                                                                          fallbackTags: nil,
@@ -527,6 +537,10 @@ final class MetadataSearchController: ObservableObject {
             keys.insert(.creationDateKey)
         case .sizeLargestFirst, .sizeSmallestFirst:
             keys.insert(.fileSizeKey)
+        case .tagCountFewestFirst, .tagCountMostFirst:
+            // Tag count is derived from the tags array populated during hydration;
+            // no extra URL resource keys are required.
+            break
         }
 
         return keys
@@ -543,7 +557,7 @@ final class MetadataSearchController: ObservableObject {
             self.controller = controller
         }
 
-        func start(state: QueryState, scopeURLs: [URL], runToken: UUID) -> Bool {
+        func start(state: QueryState, scopeURLs: [URL], runToken _: UUID) -> Bool {
             guard let controller, controller.enableMetadataQuery else { return false }
 
             let q = NSMetadataQuery()
@@ -570,7 +584,8 @@ final class MetadataSearchController: ObservableObject {
             }
 
             if let fallbackScopes = SpotlightDiagnostics.fallbackScopes(for: scopeURLs),
-               controller.startQuery(q, scopes: fallbackScopes) {
+               controller.startQuery(q, scopes: fallbackScopes)
+            {
                 return true
             }
 
@@ -592,7 +607,7 @@ final class MetadataSearchController: ObservableObject {
             guard let arguments = buildMDFindArguments(scopeURLs: scopeURLs,
                                                        include: state.includeTags,
                                                        exclude: state.excludeTags),
-                  !arguments.isEmpty else { return false }
+                !arguments.isEmpty else { return false }
 
             controller.isSearching = true
             let resourceKeys = controller.resourceKeysForSort(state.sortOption)
@@ -614,7 +629,7 @@ final class MetadataSearchController: ObservableObject {
                     try task.run()
                 } catch {
                     controller.setMDFindTask(nil)
-                    self.handleFailure("Failed to run mdfind: \(error.localizedDescription)", runToken: runToken)
+                    handleFailure("Failed to run mdfind: \(error.localizedDescription)", runToken: runToken)
                     return
                 }
 
@@ -687,7 +702,7 @@ final class MetadataSearchController: ObservableObject {
                 guard task.terminationStatus == 0 else {
                     let trimmed = errorOutput.trimmingCharacters(in: .whitespacesAndNewlines)
                     let detail = trimmed.isEmpty ? "" : " Details: \(trimmed)"
-                    self.handleFailure("mdfind exited with code \(task.terminationStatus).\(detail)", runToken: runToken)
+                    handleFailure("mdfind exited with code \(task.terminationStatus).\(detail)", runToken: runToken)
                     return
                 }
 
@@ -716,7 +731,8 @@ final class MetadataSearchController: ObservableObject {
 
         private func buildMDFindArguments(scopeURLs: [URL],
                                           include: Set<String>,
-                                          exclude: Set<String>) -> [String]? {
+                                          exclude: Set<String>) -> [String]?
+        {
             guard !scopeURLs.isEmpty else { return nil }
             guard let query = SpotlightTagQueryBuilder.queryString(include: include, exclude: exclude) else {
                 return nil
@@ -781,7 +797,8 @@ final class MetadataSearchController: ObservableObject {
                           let enumerator = fm.enumerator(at: scope,
                                                          includingPropertiesForKeys: Array(resourceKeys),
                                                          options: [.skipsHiddenFiles, .skipsPackageDescendants],
-                                                         errorHandler: nil) else {
+                                                         errorHandler: nil)
+                    else {
                         continue
                     }
 
@@ -797,7 +814,8 @@ final class MetadataSearchController: ObservableObject {
                         collected.append(item)
 
                         if !sentPreview,
-                           collected.count >= controller.currentResultLimit {
+                           collected.count >= controller.currentResultLimit
+                        {
                             let previewPage = SearchResultPaginator.page(collected,
                                                                          sortOption: state.sortOption,
                                                                          limit: controller.currentResultLimit)
@@ -888,7 +906,8 @@ final class MetadataSearchController: ObservableObject {
 
             guard let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
                   let tags = plist as? [String],
-                  !tags.isEmpty else {
+                  !tags.isEmpty
+            else {
                 return nil
             }
 
@@ -928,23 +947,29 @@ final class MetadataSearchController: ObservableObject {
     private func metadataSortDescriptors(for sortOption: SearchResultSortOption) -> [NSSortDescriptor] {
         switch sortOption {
         case .nameAscending:
-            return [NSSortDescriptor(key: kMDItemFSName as String, ascending: true,
-                                     selector: #selector(NSString.localizedCaseInsensitiveCompare(_:)))]
+            [NSSortDescriptor(key: kMDItemFSName as String, ascending: true,
+                              selector: #selector(NSString.localizedCaseInsensitiveCompare(_:)))]
         case .nameDescending:
-            return [NSSortDescriptor(key: kMDItemFSName as String, ascending: false,
-                                     selector: #selector(NSString.localizedCaseInsensitiveCompare(_:)))]
+            [NSSortDescriptor(key: kMDItemFSName as String, ascending: false,
+                              selector: #selector(NSString.localizedCaseInsensitiveCompare(_:)))]
         case .modifiedNewestFirst:
-            return [NSSortDescriptor(key: kMDItemContentModificationDate as String, ascending: false)]
+            [NSSortDescriptor(key: kMDItemContentModificationDate as String, ascending: false)]
         case .modifiedOldestFirst:
-            return [NSSortDescriptor(key: kMDItemContentModificationDate as String, ascending: true)]
+            [NSSortDescriptor(key: kMDItemContentModificationDate as String, ascending: true)]
         case .createdNewestFirst:
-            return [NSSortDescriptor(key: kMDItemFSCreationDate as String, ascending: false)]
+            [NSSortDescriptor(key: kMDItemFSCreationDate as String, ascending: false)]
         case .createdOldestFirst:
-            return [NSSortDescriptor(key: kMDItemFSCreationDate as String, ascending: true)]
+            [NSSortDescriptor(key: kMDItemFSCreationDate as String, ascending: true)]
         case .sizeLargestFirst:
-            return [NSSortDescriptor(key: kMDItemFSSize as String, ascending: false)]
+            [NSSortDescriptor(key: kMDItemFSSize as String, ascending: false)]
         case .sizeSmallestFirst:
-            return [NSSortDescriptor(key: kMDItemFSSize as String, ascending: true)]
+            [NSSortDescriptor(key: kMDItemFSSize as String, ascending: true)]
+        case .tagCountFewestFirst, .tagCountMostFirst:
+            // Spotlight has no native tag-count key; fall back to name order.
+            // The display sort in SearchResultSortOption.sorted(_:) applies the
+            // correct tag-count ordering after results are fetched and hydrated.
+            [NSSortDescriptor(key: kMDItemFSName as String, ascending: true,
+                              selector: #selector(NSString.localizedCaseInsensitiveCompare(_:)))]
         }
     }
 
@@ -997,5 +1022,4 @@ final class MetadataSearchController: ObservableObject {
         query.searchScopes = scopes
         return query.start()
     }
-
 }
