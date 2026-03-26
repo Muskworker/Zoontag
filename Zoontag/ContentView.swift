@@ -137,7 +137,7 @@ struct ContentView: View {
                             .font(.headline)
 
                         HStack(spacing: 6) {
-                            AutocompleteTagTextField(placeholder: "Tag name",
+                            AutocompleteTagTextField(placeholder: String(localized: "Tag name"),
                                                      text: $queryTagName,
                                                      onMoveUp: {
                                                          moveQuerySuggestionSelection(delta: -1)
@@ -527,7 +527,7 @@ struct ContentView: View {
                     Text("Add Tag")
                         .font(.headline)
                     HStack(spacing: 8) {
-                        AutocompleteTagTextField(placeholder: "Tag name",
+                        AutocompleteTagTextField(placeholder: String(localized: "Tag name"),
                                                  text: $newTagName,
                                                  onMoveUp: {
                                                      moveSuggestionSelection(delta: -1)
@@ -911,7 +911,7 @@ struct ContentView: View {
 
     // MARK: - Chip UI
 
-    private func tagChips(title: String, tags: [String], tint: Color, onRemove: @escaping (String) -> Void) -> some View {
+    private func tagChips(title: LocalizedStringKey, tags: [String], tint: Color, onRemove: @escaping (String) -> Void) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.headline)
@@ -1163,7 +1163,7 @@ private extension ContentView {
         if let normalized = FinderTag.normalizedHex(hex) {
             return "#\(normalized)"
         }
-        return "No color"
+        return String(localized: "No color")
     }
 
     func colorFromHex(_ hex: String?) -> Color? {

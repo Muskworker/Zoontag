@@ -543,6 +543,18 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    // MARK: - Spanish (US) localization
+
+    /// Verifies the bundle ships Spanish (Latin America / US) as a supported locale.
+    /// Fails until `es-419` is added to `knownRegions` in the Xcode project and translations are provided.
+    func test_spanishUSLocalization_bundleContainsEs419() {
+        let bundle = Bundle(for: LocalizationTests.self)
+        XCTAssertTrue(
+            bundle.localizations.contains("es-419"),
+            "Bundle must contain Spanish (US) localization (es-419) — add es-419 to knownRegions and Localizable.xcstrings"
+        )
+    }
+
     // MARK: - Subdirectory toggle
 
     /// QueryState must default to including subdirectories so existing users see no behavior change.
