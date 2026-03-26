@@ -8,6 +8,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Added
+- **Include subfolders** checkbox above the results grid. When unchecked, only files directly inside the chosen folder are shown — subdirectory contents are excluded from results and from the tag autocomplete catalog. The setting persists across launches. Default is checked (existing behavior preserved).
 - Two new sort options in the results toolbar: **Tag Count (Fewest)** and **Tag Count (Most)**. Sorting by fewest tags first surfaces untagged and undertagged files so you can systematically improve tagging coverage.
 - Localization infrastructure: `Localizable.xcstrings` string catalog added to the Zoontag target. Sort option titles, color picker labels, results count text, and `FinderTagEditor` error descriptions now route through `String(localized:)` so the app can be translated without source changes. SwiftUI `Text("…")` literals throughout `ContentView` are auto-extracted into the catalog by the build system.
 
