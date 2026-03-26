@@ -21,6 +21,8 @@ final class WorkspaceSessionStore {
         let sortOptionRawValue: String
         let isDetailPaneVisible: Bool
         let scopes: [PersistedScope]
+        /// Nil in sessions saved before this field was introduced; treated as true on restore.
+        let includeSubdirectories: Bool?
     }
 
     private let defaults: UserDefaults
@@ -33,7 +35,8 @@ final class WorkspaceSessionStore {
     init(defaults: UserDefaults = .standard,
          storageKey: String = "workspaceSession.v1",
          createBookmark: @escaping (URL) throws -> Data = WorkspaceSessionStore.createSecurityScopedBookmark(for:),
-         resolveBookmark: @escaping (Data) throws -> BookmarkResolution = WorkspaceSessionStore.resolveSecurityScopedBookmark(from:)) {
+         resolveBookmark: @escaping (Data) throws -> BookmarkResolution = WorkspaceSessionStore.resolveSecurityScopedBookmark(from:))
+    {
         self.defaults = defaults
         self.storageKey = storageKey
         self.createBookmark = createBookmark
@@ -50,7 +53,8 @@ final class WorkspaceSessionStore {
                                        excludeTags: Array(queryState.excludeTags).sorted(),
                                        sortOptionRawValue: queryState.sortOption.rawValue,
                                        isDetailPaneVisible: isDetailPaneVisible,
-                                       scopes: persistedScopes)
+                                       scopes: persistedScopes,
+                                       includeSubdirectories: queryState.includeSubdirectories)
         persist(payload)
     }
 
@@ -78,7 +82,8 @@ final class WorkspaceSessionStore {
             }
 
             if resolution.isStale,
-               let refreshedBookmark = try? createBookmark(standardizedURL) {
+               let refreshedBookmark = try? createBookmark(standardizedURL)
+            {
                 updatedScopes.append(PersistedSession.PersistedScope(bookmarkData: refreshedBookmark))
                 shouldRewrite = true
             } else {
@@ -94,7 +99,8 @@ final class WorkspaceSessionStore {
         let restoredState = QueryState(includeTags: Set(persisted.includeTags),
                                        excludeTags: Set(persisted.excludeTags),
                                        scopeURLs: restoredURLs,
-                                       sortOption: restoredSortOption)
+                                       sortOption: restoredSortOption,
+                                       includeSubdirectories: persisted.includeSubdirectories ?? true)
         let session = WorkspaceSession(queryState: restoredState,
                                        isDetailPaneVisible: persisted.isDetailPaneVisible)
 
@@ -103,7 +109,8 @@ final class WorkspaceSessionStore {
                                               excludeTags: Array(restoredState.excludeTags).sorted(),
                                               sortOptionRawValue: restoredState.sortOption.rawValue,
                                               isDetailPaneVisible: session.isDetailPaneVisible,
-                                              scopes: updatedScopes)
+                                              scopes: updatedScopes,
+                                              includeSubdirectories: restoredState.includeSubdirectories)
             persist(normalized)
         }
 
@@ -115,13 +122,13 @@ final class WorkspaceSessionStore {
         defaults.set(data, forKey: storageKey)
     }
 
-    nonisolated private static func createSecurityScopedBookmark(for url: URL) throws -> Data {
+    private nonisolated static func createSecurityScopedBookmark(for url: URL) throws -> Data {
         try url.bookmarkData(options: [.withSecurityScope],
                              includingResourceValuesForKeys: nil,
                              relativeTo: nil)
     }
 
-    nonisolated private static func resolveSecurityScopedBookmark(from data: Data) throws -> BookmarkResolution {
+    private nonisolated static func resolveSecurityScopedBookmark(from data: Data) throws -> BookmarkResolution {
         var isStale = false
         let resolvedURL = try URL(resolvingBookmarkData: data,
                                   options: [.withSecurityScope],

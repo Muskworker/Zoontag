@@ -53,10 +53,12 @@ final class MetadataSearchController: ObservableObject {
         let includeTags: Set<String>
         let excludeTags: Set<String>
         let scopePaths: [String]
+        let includeSubdirectories: Bool
     }
 
     private struct ScopeTagIndexKey: Equatable {
         let scopePaths: [String]
+        let includeSubdirectories: Bool
     }
 
     deinit {
@@ -112,7 +114,7 @@ final class MetadataSearchController: ObservableObject {
             return
         }
 
-        refreshScopeTagCatalogIfNeeded(for: state.scopeURLs)
+        refreshScopeTagCatalogIfNeeded(for: state)
 
         let cacheKey = makeCacheKey(for: state)
         if cachedSearchKey != cacheKey {
@@ -255,11 +257,13 @@ final class MetadataSearchController: ObservableObject {
         let scopePaths = normalizedScopePaths(for: state.scopeURLs)
         return SearchCacheKey(includeTags: state.includeTags,
                               excludeTags: state.excludeTags,
-                              scopePaths: scopePaths)
+                              scopePaths: scopePaths,
+                              includeSubdirectories: state.includeSubdirectories)
     }
 
-    private func makeScopeTagIndexKey(for scopeURLs: [URL]) -> ScopeTagIndexKey {
-        ScopeTagIndexKey(scopePaths: normalizedScopePaths(for: scopeURLs))
+    private func makeScopeTagIndexKey(for state: QueryState) -> ScopeTagIndexKey {
+        ScopeTagIndexKey(scopePaths: normalizedScopePaths(for: state.scopeURLs),
+                         includeSubdirectories: state.includeSubdirectories)
     }
 
     private func normalizedScopePaths(for scopeURLs: [URL]) -> [String] {
@@ -315,8 +319,8 @@ final class MetadataSearchController: ObservableObject {
         return true
     }
 
-    private func refreshScopeTagCatalogIfNeeded(for scopeURLs: [URL]) {
-        let key = makeScopeTagIndexKey(for: scopeURLs)
+    private func refreshScopeTagCatalogIfNeeded(for state: QueryState) {
+        let key = makeScopeTagIndexKey(for: state)
 
         if cachedScopeTagIndexKey != key {
             cachedScopeTagIndexKey = key
@@ -329,11 +333,12 @@ final class MetadataSearchController: ObservableObject {
 
         let indexToken = UUID()
         currentScopeTagIndexToken = indexToken
+        let includeSubdirectories = state.includeSubdirectories
 
         tagIndexQueue.async { [weak self] in
             guard let self else { return }
 
-            let accessibleScopeURLs = beginTransientSecurityScope(for: scopeURLs)
+            let accessibleScopeURLs = beginTransientSecurityScope(for: state.scopeURLs)
             guard !accessibleScopeURLs.isEmpty else {
                 DispatchQueue.main.async {
                     guard self.currentScopeTagIndexToken == indexToken,
@@ -346,7 +351,8 @@ final class MetadataSearchController: ObservableObject {
 
             defer { self.endSecurityScope(for: accessibleScopeURLs) }
 
-            let catalog = buildScopeTagCatalog(scopeURLs: accessibleScopeURLs)
+            let catalog = buildScopeTagCatalog(scopeURLs: accessibleScopeURLs,
+                                               includeSubdirectories: includeSubdirectories)
             DispatchQueue.main.async {
                 guard self.currentScopeTagIndexToken == indexToken,
                       self.cachedScopeTagIndexKey == key else { return }
@@ -385,14 +391,21 @@ final class MetadataSearchController: ObservableObject {
         return []
     }
 
-    private func buildScopeTagCatalog(scopeURLs: [URL]) -> [String: TagAutocompleteEntry] {
-        if let indexed = buildScopeTagCatalogUsingMDFind(scopeURLs: scopeURLs) {
+    private func buildScopeTagCatalog(scopeURLs: [URL],
+                                      includeSubdirectories: Bool) -> [String: TagAutocompleteEntry]
+    {
+        if let indexed = buildScopeTagCatalogUsingMDFind(scopeURLs: scopeURLs,
+                                                         includeSubdirectories: includeSubdirectories)
+        {
             return indexed
         }
-        return buildScopeTagCatalogByEnumeration(scopeURLs: scopeURLs)
+        return buildScopeTagCatalogByEnumeration(scopeURLs: scopeURLs,
+                                                 includeSubdirectories: includeSubdirectories)
     }
 
-    private func buildScopeTagCatalogUsingMDFind(scopeURLs: [URL]) -> [String: TagAutocompleteEntry]? {
+    private func buildScopeTagCatalogUsingMDFind(scopeURLs: [URL],
+                                                 includeSubdirectories: Bool) -> [String: TagAutocompleteEntry]?
+    {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
 
@@ -424,15 +437,24 @@ final class MetadataSearchController: ObservableObject {
             .map(String.init)
             .filter { !$0.isEmpty }
 
+        // Standardize scope URLs once for efficient parent-path comparison.
+        let standardizedScopes = includeSubdirectories ? [] : scopeURLs.map(\.standardizedFileURL)
+
         for path in paths {
             let url = URL(fileURLWithPath: path)
+            if !includeSubdirectories {
+                let parent = url.deletingLastPathComponent().standardizedFileURL
+                guard standardizedScopes.contains(parent) else { continue }
+            }
             TagAutocompleteCatalogBuilder.add(normalizedTags(primaryTags: nil, url: url), into: &catalog)
         }
 
         return catalog
     }
 
-    private func buildScopeTagCatalogByEnumeration(scopeURLs: [URL]) -> [String: TagAutocompleteEntry] {
+    private func buildScopeTagCatalogByEnumeration(scopeURLs: [URL],
+                                                   includeSubdirectories: Bool) -> [String: TagAutocompleteEntry]
+    {
         let fm = FileManager.default
         let resourceKeys: Set<URLResourceKey> = [.isRegularFileKey, .isDirectoryKey, .tagNamesKey]
         var catalog: [String: TagAutocompleteEntry] = [:]
@@ -444,6 +466,23 @@ final class MetadataSearchController: ObservableObject {
                                                                  fallbackTags: scopeValues?.tagNames,
                                                                  url: scope),
                                                   into: &catalog)
+                continue
+            }
+
+            if !includeSubdirectories {
+                // List only immediate children; no recursive descent.
+                let children = (try? fm.contentsOfDirectory(at: scope,
+                                                            includingPropertiesForKeys: Array(resourceKeys),
+                                                            options: [.skipsHiddenFiles,
+                                                                      .skipsPackageDescendants])) ?? []
+                for fileURL in children {
+                    let values = try? fileURL.resourceValues(forKeys: resourceKeys)
+                    guard values?.isRegularFile == true else { continue }
+                    TagAutocompleteCatalogBuilder.add(normalizedTags(primaryTags: nil,
+                                                                     fallbackTags: values?.tagNames,
+                                                                     url: fileURL),
+                                                      into: &catalog)
+                }
                 continue
             }
 
@@ -649,8 +688,17 @@ final class MetadataSearchController: ObservableObject {
                     outputGroup.leave()
                 }
 
+                // Standardize scope URLs once for efficient parent-path comparison.
+                let standardizedScopes = state.includeSubdirectories
+                    ? []
+                    : scopeURLs.map(\.standardizedFileURL)
+
                 func appendPath(_ path: String) {
                     let url = URL(fileURLWithPath: path)
+                    if !state.includeSubdirectories {
+                        let parent = url.deletingLastPathComponent().standardizedFileURL
+                        guard standardizedScopes.contains(parent) else { return }
+                    }
                     let resourceValues = try? url.resourceValues(forKeys: resourceKeys)
                     let item = controller.makeSortableResult(url: url,
                                                              preferredName: resourceValues?.localizedName,
@@ -790,6 +838,23 @@ final class MetadataSearchController: ObservableObject {
                                                                  preferredName: scopeValues?.localizedName,
                                                                  resourceValues: scopeValues)
                         collected.append(item)
+                        continue
+                    }
+
+                    if !state.includeSubdirectories {
+                        // List only immediate children; no recursive descent.
+                        let children = (try? fm.contentsOfDirectory(at: scope,
+                                                                    includingPropertiesForKeys: Array(resourceKeys),
+                                                                    options: [.skipsHiddenFiles,
+                                                                              .skipsPackageDescendants])) ?? []
+                        for fileURL in children {
+                            let values = try? fileURL.resourceValues(forKeys: resourceKeys)
+                            guard values?.isRegularFile == true else { continue }
+                            let item = controller.makeSortableResult(url: fileURL,
+                                                                     preferredName: values?.localizedName,
+                                                                     resourceValues: values)
+                            collected.append(item)
+                        }
                         continue
                     }
 

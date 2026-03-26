@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 struct ContentView: View {
     @StateObject private var search = MetadataSearchController()
@@ -140,16 +140,16 @@ struct ContentView: View {
                             AutocompleteTagTextField(placeholder: "Tag name",
                                                      text: $queryTagName,
                                                      onMoveUp: {
-                                moveQuerySuggestionSelection(delta: -1)
-                            }, onMoveDown: {
-                                moveQuerySuggestionSelection(delta: 1)
-                            }, onTabComplete: {
-                                acceptHighlightedQuerySuggestion()
-                            }, onSubmit: {
-                                includeTypedTagInQuery()
-                                return true
-                            })
-                                .frame(minWidth: 130)
+                                                         moveQuerySuggestionSelection(delta: -1)
+                                                     }, onMoveDown: {
+                                                         moveQuerySuggestionSelection(delta: 1)
+                                                     }, onTabComplete: {
+                                                         acceptHighlightedQuerySuggestion()
+                                                     }, onSubmit: {
+                                                         includeTypedTagInQuery()
+                                                         return true
+                                                     })
+                                                     .frame(minWidth: 130)
 
                             Button {
                                 includeTypedTagInQuery()
@@ -191,7 +191,8 @@ struct ContentView: View {
                                     } label: {
                                         HStack(spacing: 8) {
                                             if let hex = entry.color.hexValue,
-                                               let color = colorFromHex(hex) {
+                                               let color = colorFromHex(hex)
+                                            {
                                                 Circle()
                                                     .fill(color)
                                                     .frame(width: 8, height: 8)
@@ -328,6 +329,9 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, minHeight: 400)
             } else {
                 HStack {
+                    Toggle("Include subfolders", isOn: $state.includeSubdirectories)
+                        .toggleStyle(.checkbox)
+
                     Spacer()
                     Picker("Sort", selection: $state.sortOption) {
                         ForEach(SearchResultSortOption.allCases) { option in
@@ -526,22 +530,23 @@ struct ContentView: View {
                         AutocompleteTagTextField(placeholder: "Tag name",
                                                  text: $newTagName,
                                                  onMoveUp: {
-                            moveSuggestionSelection(delta: -1)
-                        }, onMoveDown: {
-                            moveSuggestionSelection(delta: 1)
-                        }, onTabComplete: {
-                            acceptHighlightedSuggestion()
-                        }, onSubmit: {
-                            addTagToSelection()
-                            return true
-                        })
-                            .frame(minWidth: 160)
+                                                     moveSuggestionSelection(delta: -1)
+                                                 }, onMoveDown: {
+                                                     moveSuggestionSelection(delta: 1)
+                                                 }, onTabComplete: {
+                                                     acceptHighlightedSuggestion()
+                                                 }, onSubmit: {
+                                                     addTagToSelection()
+                                                     return true
+                                                 })
+                                                 .frame(minWidth: 160)
 
                         Picker("Color", selection: $newTagColor) {
                             ForEach(FinderTagColorOption.allCases) { option in
                                 HStack {
                                     if let hex = option.hexValue,
-                                       let color = colorFromHex(hex) {
+                                       let color = colorFromHex(hex)
+                                    {
                                         Circle()
                                             .fill(color)
                                             .frame(width: 10, height: 10)
@@ -571,7 +576,8 @@ struct ContentView: View {
                                 } label: {
                                     HStack(spacing: 8) {
                                         if let hex = entry.color.hexValue,
-                                           let color = colorFromHex(hex) {
+                                           let color = colorFromHex(hex)
+                                        {
                                             Circle()
                                                 .fill(color)
                                                 .frame(width: 8, height: 8)
@@ -729,11 +735,11 @@ struct ContentView: View {
                 tagEditPinnedItems = preEditSnapshot.map { item in
                     guard let updated = updatedTagsByURL[item.url] else { return item }
                     return SearchResultItem(url: item.url,
-                                           displayName: item.displayName,
-                                           tags: updated,
-                                           contentModificationDate: item.contentModificationDate,
-                                           creationDate: item.creationDate,
-                                           fileSizeBytes: item.fileSizeBytes)
+                                            displayName: item.displayName,
+                                            tags: updated,
+                                            contentModificationDate: item.contentModificationDate,
+                                            creationDate: item.creationDate,
+                                            fileSizeBytes: item.fileSizeBytes)
                 }
                 search.invalidateResultsCache()
                 search.invalidateScopeTagCatalog()
@@ -748,7 +754,8 @@ struct ContentView: View {
 
         if let resolved = TagAutocompleteLogic.resolvedColor(for: value,
                                                              in: autocompleteTagCatalog,
-                                                             userOverrodeColor: userOverrodeTagColor) {
+                                                             userOverrodeColor: userOverrodeTagColor)
+        {
             setTagColor(resolved, userInitiated: false)
         }
     }
@@ -781,7 +788,8 @@ struct ContentView: View {
     private func moveSuggestionSelection(delta: Int) -> Bool {
         guard let id = TagAutocompleteLogic.movedHighlightedSuggestionID(in: tagSuggestions,
                                                                          currentID: highlightedSuggestionID,
-                                                                         delta: delta) else {
+                                                                         delta: delta)
+        else {
             return false
         }
         highlightedSuggestionID = id
@@ -790,7 +798,8 @@ struct ContentView: View {
 
     private func acceptHighlightedSuggestion() -> Bool {
         guard let entry = TagAutocompleteLogic.acceptedSuggestion(in: tagSuggestions,
-                                                                  highlightedID: highlightedSuggestionID) else {
+                                                                  highlightedID: highlightedSuggestionID)
+        else {
             return false
         }
         applySuggestion(entry)
@@ -810,7 +819,8 @@ struct ContentView: View {
     private func moveQuerySuggestionSelection(delta: Int) -> Bool {
         guard let id = TagAutocompleteLogic.movedHighlightedSuggestionID(in: queryTagSuggestions,
                                                                          currentID: highlightedQuerySuggestionID,
-                                                                         delta: delta) else {
+                                                                         delta: delta)
+        else {
             return false
         }
         highlightedQuerySuggestionID = id
@@ -819,7 +829,8 @@ struct ContentView: View {
 
     private func acceptHighlightedQuerySuggestion() -> Bool {
         guard let entry = TagAutocompleteLogic.acceptedSuggestion(in: queryTagSuggestions,
-                                                                  highlightedID: highlightedQuerySuggestionID) else {
+                                                                  highlightedID: highlightedQuerySuggestionID)
+        else {
             return false
         }
         selectQuerySuggestion(entry)
@@ -980,21 +991,22 @@ private struct AutocompleteTagTextField: NSViewRepresentable {
             parent.text = field.stringValue
         }
 
-        func control(_ control: NSControl,
-                     textView: NSTextView,
-                     doCommandBy commandSelector: Selector) -> Bool {
+        func control(_: NSControl,
+                     textView _: NSTextView,
+                     doCommandBy commandSelector: Selector) -> Bool
+        {
             // Intercept navigation and completion keys so text entry can drive autocomplete.
             switch commandSelector {
             case #selector(NSResponder.moveUp(_:)):
-                return parent.onMoveUp()
+                parent.onMoveUp()
             case #selector(NSResponder.moveDown(_:)):
-                return parent.onMoveDown()
+                parent.onMoveDown()
             case #selector(NSResponder.insertTab(_:)):
-                return parent.onTabComplete()
+                parent.onTabComplete()
             case #selector(NSResponder.insertNewline(_:)):
-                return parent.onSubmit()
+                parent.onSubmit()
             default:
-                return false
+                false
             }
         }
     }
@@ -1003,7 +1015,7 @@ private struct AutocompleteTagTextField: NSViewRepresentable {
 extension ContentView {
     private func dynamicPreviewHeight(for item: SearchResultItem) -> CGFloat {
         let base: CGFloat = 320
-        let extra: CGFloat = CGFloat(item.tags.count) * 12
+        let extra = CGFloat(item.tags.count) * 12
         return min(max(base + extra, 320), 560)
     }
 }
@@ -1012,7 +1024,9 @@ private struct FacetGroup: Identifiable {
     let key: String
     let colorHex: String?
     let facets: [TagFacet]
-    var id: String { key }
+    var id: String {
+        key
+    }
 }
 
 private extension ContentView {
@@ -1026,7 +1040,7 @@ private extension ContentView {
         if search.isRefiningResults {
             return "Showing quick results while full sorted results load…"
         }
-        if state.sortOption != search.resultsSortOption && search.isSearching {
+        if state.sortOption != search.resultsSortOption, search.isSearching {
             return "Updating sort order…"
         }
         return resultCoverage.statusText

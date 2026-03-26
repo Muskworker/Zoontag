@@ -542,4 +542,37 @@ final class LocalizationTests: XCTestCase {
             XCTAssertFalse(option.title.isEmpty, "\(option) title should not be empty")
         }
     }
+
+    // MARK: - Subdirectory toggle
+
+    /// QueryState must default to including subdirectories so existing users see no behavior change.
+    func test_queryState_includeSubdirectoriesDefaultsToTrue() {
+        let state = QueryState()
+        XCTAssertTrue(state.includeSubdirectories)
+    }
+
+    /// Toggling includeSubdirectories must produce a different QueryState so the cache invalidates.
+    func test_queryState_includeSubdirectoriesFalseProducesDifferentState() {
+        let stateOn = QueryState()
+        var stateOff = QueryState()
+        stateOff.includeSubdirectories = false
+        XCTAssertNotEqual(stateOn, stateOff)
+    }
+
+    /// WorkspaceSessionStore must persist and restore includeSubdirectories = false across a round-trip.
+    func test_workspaceSessionStore_persistsIncludeSubdirectoriesFalse() {
+        let store = WorkspaceSessionStore(
+            defaults: .standard,
+            storageKey: "test.includeSubdirectories.\(UUID())",
+            createBookmark: { _ in Data() },
+            resolveBookmark: { _ in throw NSError(domain: "test", code: 0) }
+        )
+        var state = QueryState()
+        state.includeSubdirectories = false
+
+        store.save(queryState: state, isDetailPaneVisible: false)
+        let restored = store.restore()
+
+        XCTAssertEqual(restored?.queryState.includeSubdirectories, false)
+    }
 }
