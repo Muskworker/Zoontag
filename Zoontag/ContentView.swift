@@ -97,13 +97,6 @@ struct ContentView: View {
                     }
                     .help(isDetailPaneVisible ? "Hide Details" : "Show Details")
                     .accessibilityLabel(isDetailPaneVisible ? "Hide Details" : "Show Details")
-
-                    // Simple “clear all” for fast iteration
-                    Button("Clear Tags") {
-                        state.includeTags.removeAll()
-                        state.excludeTags.removeAll()
-                    }
-                    .disabled(state.includeTags.isEmpty && state.excludeTags.isEmpty)
                 }
             }
     }
@@ -220,6 +213,16 @@ struct ContentView: View {
 
                         tagChips(title: "Exclude", tags: Array(state.excludeTags).sorted(), tint: .red) { tag in
                             state.excludeTags.remove(tag)
+                        }
+
+                        HStack {
+                            Spacer()
+                            // Clears all include and exclude tags from the active query.
+                            Button("Clear Query") {
+                                state.includeTags.removeAll()
+                                state.excludeTags.removeAll()
+                            }
+                            .disabled(state.includeTags.isEmpty && state.excludeTags.isEmpty)
                         }
                     }
                     .padding(.top, 4)
