@@ -14,6 +14,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Localization infrastructure: `Localizable.xcstrings` string catalog added to the Zoontag target. Sort option titles, color picker labels, results count text, and `FinderTagEditor` error descriptions now route through `String(localized:)` so the app can be translated without source changes. SwiftUI `Text("…")` literals throughout `ContentView` are auto-extracted into the catalog by the build system.
 
 ### Fixed
+- Moved the **Clear Query** button (formerly "Clear Tags") from the toolbar into the Query box in the left sidebar, where it correctly belongs alongside the include/exclude tag controls. Its previous placement in the toolbar's trailing area gave the false impression it would clear tags from the selected file.
 - Results count label in the toolbar now has balanced horizontal padding, matching the inset of adjacent toolbar buttons.
 - Removed stray `Divider` that added asymmetric left-side spacing to the results count.
 
