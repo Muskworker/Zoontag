@@ -35,10 +35,21 @@ jobs:
             .build/release/Zoontag-macOS.zip
             .build/release/Zoontag-macOS.zip.sha256
 
+      - name: Extract release notes from CHANGELOG
+        if: startsWith(github.ref, 'refs/tags/')
+        id: release_notes
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          NOTES=$(awk "/^## \[$VERSION\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md | sed '/^[[:space:]]*$/d' | sed '$ { /^[[:space:]]*$/d }')
+          echo "notes<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$NOTES" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
       - name: Attach package to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          body: ${{ steps.release_notes.outputs.notes }}
           files: |
             .build/release/Zoontag-macOS.zip
             .build/release/Zoontag-macOS.zip.sha256
