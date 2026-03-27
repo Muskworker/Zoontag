@@ -244,6 +244,15 @@ final class MetadataSearchController: ObservableObject {
         }
     }
 
+    /// Returns true for item types that should appear in search results.
+    /// Accepts regular files and directories; skips symlinks, special devices,
+    /// and other non-standard filesystem objects.
+    /// Centralised here so all backends apply the same eligibility policy —
+    /// extend this function when a per-type content filter is added.
+    private func isEligibleResult(values: URLResourceValues?) -> Bool {
+        values?.isRegularFile == true || values?.isDirectory == true
+    }
+
     private func clearResultsAndCoverage(sortOption: SearchResultSortOption? = nil) {
         let effectiveSort = sortOption ?? lastRunState?.sortOption ?? resultsSortOption
         applyResults([],
@@ -649,7 +658,9 @@ final class MetadataSearchController: ObservableObject {
                 !arguments.isEmpty else { return false }
 
             controller.isSearching = true
-            let resourceKeys = controller.resourceKeysForSort(state.sortOption)
+            var resourceKeys = controller.resourceKeysForSort(state.sortOption)
+            resourceKeys.insert(.isRegularFileKey)
+            resourceKeys.insert(.isDirectoryKey)
 
             controller.fallbackQueue.async { [weak self] in
                 guard let self, let controller = self.controller else { return }
@@ -700,6 +711,7 @@ final class MetadataSearchController: ObservableObject {
                         guard standardizedScopes.contains(parent) else { return }
                     }
                     let resourceValues = try? url.resourceValues(forKeys: resourceKeys)
+                    guard controller.isEligibleResult(values: resourceValues) else { return }
                     let item = controller.makeSortableResult(url: url,
                                                              preferredName: resourceValues?.localizedName,
                                                              resourceValues: resourceValues)
@@ -849,7 +861,7 @@ final class MetadataSearchController: ObservableObject {
                                                                               .skipsPackageDescendants])) ?? []
                         for fileURL in children {
                             let values = try? fileURL.resourceValues(forKeys: resourceKeys)
-                            guard values?.isRegularFile == true else { continue }
+                            guard controller.isEligibleResult(values: values) else { continue }
                             let item = controller.makeSortableResult(url: fileURL,
                                                                      preferredName: values?.localizedName,
                                                                      resourceValues: values)
@@ -869,9 +881,7 @@ final class MetadataSearchController: ObservableObject {
 
                     for case let fileURL as URL in enumerator {
                         let values = try? fileURL.resourceValues(forKeys: resourceKeys)
-                        if values?.isDirectory == true {
-                            continue
-                        }
+                        guard controller.isEligibleResult(values: values) else { continue }
 
                         let item = controller.makeSortableResult(url: fileURL,
                                                                  preferredName: values?.localizedName,
