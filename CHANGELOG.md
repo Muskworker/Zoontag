@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.0] - 2026-03-27
 
 ### Added
 - **Spanish (Latin America / US) localization** (`es-419`): all user-visible strings — tag chip headings, sort options, color names, results counts, error messages, and tag field placeholders — are now translated into Spanish. Surfaces to users whose macOS preferred language is set to Español (Latinoamérica).
