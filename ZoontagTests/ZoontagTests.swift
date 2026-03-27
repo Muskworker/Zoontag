@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 @testable import Zoontag
 
@@ -513,6 +514,79 @@ final class ZoontagTests: XCTestCase {
 
     private enum BookmarkResolutionError: Error {
         case invalidData
+    }
+
+    // MARK: - Folder visibility in search results
+
+    /// Folders inside a scope directory must appear in blank (no-tag) query results.
+    /// Before the fix, EnumerationBackend (used for blank queries) explicitly skipped
+    /// directories, so folders were visible in exclude-only mdfind queries but not here.
+    func test_blankQuery_includesSubdirectoriesInResults() throws {
+        let fm = FileManager.default
+        let tempDir = fm.temporaryDirectory.appendingPathComponent("ZoontagFolderTest-\(UUID())")
+        let subdir = tempDir.appendingPathComponent("SubFolder")
+        try fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        try fm.createDirectory(at: subdir, withIntermediateDirectories: true)
+        fm.createFile(atPath: tempDir.appendingPathComponent("regular.txt").path, contents: nil)
+        defer { try? fm.removeItem(at: tempDir) }
+
+        let controller = MetadataSearchController()
+        var state = QueryState()
+        state.scopeURLs = [tempDir]
+
+        var cancellables = Set<AnyCancellable>()
+        let done = expectation(description: "results populated")
+        // Wait for results to become non-empty rather than watching isSearching:
+        // executeRun calls stop() before starting the search, which fires
+        // isSearching = false prematurely and would fulfill an isSearching-based
+        // expectation before any results are available.
+        controller.$results
+            .filter { !$0.isEmpty }
+            .first()
+            .sink { _ in done.fulfill() }
+            .store(in: &cancellables)
+
+        controller.run(state: state)
+        waitForExpectations(timeout: 5)
+
+        let resolvedSubdir = subdir.resolvingSymlinksInPath().path
+        XCTAssertTrue(
+            controller.results.contains { $0.url.resolvingSymlinksInPath().path == resolvedSubdir },
+            "Subdirectory should appear in blank query results"
+        )
+    }
+
+    /// Folders must also appear when includeSubdirectories is false (shallow enumeration path).
+    func test_shallowQuery_includesDirectChildFolders() throws {
+        let fm = FileManager.default
+        let tempDir = fm.temporaryDirectory.appendingPathComponent("ZoontagShallowTest-\(UUID())")
+        let subdir = tempDir.appendingPathComponent("ChildFolder")
+        try fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        try fm.createDirectory(at: subdir, withIntermediateDirectories: true)
+        fm.createFile(atPath: tempDir.appendingPathComponent("regular.txt").path, contents: nil)
+        defer { try? fm.removeItem(at: tempDir) }
+
+        let controller = MetadataSearchController()
+        var state = QueryState()
+        state.scopeURLs = [tempDir]
+        state.includeSubdirectories = false
+
+        var cancellables = Set<AnyCancellable>()
+        let done = expectation(description: "results populated")
+        controller.$results
+            .filter { !$0.isEmpty }
+            .first()
+            .sink { _ in done.fulfill() }
+            .store(in: &cancellables)
+
+        controller.run(state: state)
+        waitForExpectations(timeout: 5)
+
+        let resolvedSubdir = subdir.resolvingSymlinksInPath().path
+        XCTAssertTrue(
+            controller.results.contains { $0.url.resolvingSymlinksInPath().path == resolvedSubdir },
+            "Child directory should appear in shallow query results"
+        )
     }
 }
 
