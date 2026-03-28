@@ -72,11 +72,23 @@ struct ContentView: View {
             .onAppear {
                 restorePersistedSessionIfNeeded()
             }
+            .navigationTitle(windowTitle)
             .frame(minWidth: 1000, minHeight: 650)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .toolbar {
                 ToolbarItemGroup {
                     Button("Choose Folder…") { chooseFolder() }
+
+                    if canNavigateToParent {
+                        Button {
+                            navigateToParent()
+                        } label: {
+                            Image(systemName: "arrow.up")
+                        }
+                        .keyboardShortcut(.upArrow, modifiers: .command)
+                        .help("Go to Parent Folder")
+                        .accessibilityLabel("Go to Parent Folder")
+                    }
 
                     if search.isSearching {
                         ProgressView()
@@ -424,6 +436,9 @@ struct ContentView: View {
                     LazyVGrid(columns: columns, spacing: 14) {
                         ForEach(sortedResults) { item in
                             resultCard(item)
+                                .onTapGesture(count: 2) {
+                                    openOrNavigate(item)
+                                }
                                 .onTapGesture {
                                     handleResultSelection(item)
                                 }
@@ -992,12 +1007,51 @@ struct ContentView: View {
         panel.prompt = "Choose"
 
         if panel.runModal() == .OK, let url = panel.url {
-            state.scopeURLs = [url]
-            selectedItemIDs.removeAll()
-            preferredSelectionID = nil
-            newTagName = ""
-            highlightedSuggestionID = nil
-            setTagColor(.none, userInitiated: false)
+            navigateToFolder(url)
+        }
+    }
+
+    /// Navigates the search scope into the given folder URL, clearing
+    /// selection and any in-progress tag edits.
+    private func navigateToFolder(_ url: URL) {
+        state.scopeURLs = [url]
+        selectedItemIDs.removeAll()
+        preferredSelectionID = nil
+        newTagName = ""
+        highlightedSuggestionID = nil
+        setTagColor(.none, userInitiated: false)
+    }
+
+    /// Window title: shows the scoped folder name when a single folder is active,
+    /// otherwise falls back to the app name.
+    private var windowTitle: String {
+        guard state.scopeURLs.count == 1 else { return "Zoontag" }
+        let name = state.scopeURLs[0].lastPathComponent
+        return name.isEmpty ? "/" : name
+    }
+
+    /// True when there is exactly one scope URL and it has a parent to go up to.
+    /// Uses pathComponents.count rather than URL comparison because
+    /// deletingLastPathComponent() on the filesystem root returns "/.." (not "/"),
+    /// which causes a .standardized comparison to incorrectly evaluate as unequal.
+    private var canNavigateToParent: Bool {
+        guard state.scopeURLs.count == 1 else { return false }
+        return state.scopeURLs[0].standardized.pathComponents.count > 1
+    }
+
+    /// Navigates to the parent of the current single-folder scope.
+    private func navigateToParent() {
+        guard canNavigateToParent else { return }
+        navigateToFolder(state.scopeURLs[0].deletingLastPathComponent())
+    }
+
+    /// Double-click handler: opens files in their default app, navigates into folders.
+    private func openOrNavigate(_ item: SearchResultItem) {
+        let isDirectory = (try? item.url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+        if isDirectory {
+            navigateToFolder(item.url)
+        } else {
+            NSWorkspace.shared.open(item.url)
         }
     }
 
