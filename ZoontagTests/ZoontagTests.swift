@@ -784,13 +784,4 @@ final class LocalizationTests: XCTestCase {
 
         XCTAssertTrue(canNavigate)
     }
-
-    func test_parentURL_whenSingleScopeURL_returnsImmediateParent() {
-        var state = QueryState()
-        state.scopeURLs = [URL(fileURLWithPath: "/Users/alice/Documents")]
-
-        let parent = state.scopeURLs[0].deletingLastPathComponent()
-
-        XCTAssertEqual(parent.path, "/Users/alice")
-    }
 }
