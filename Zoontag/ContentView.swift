@@ -59,6 +59,9 @@ struct ContentView: View {
             .onChange(of: search.scopeTagCatalog) { _, _ in
                 syncQueryHighlightedSuggestion()
             }
+            .onChange(of: search.scopeFileTypeCatalog) { _, _ in
+                syncQueryHighlightedSuggestion()
+            }
             .onChange(of: newTagColor) { _, _ in
                 if suppressTagColorChange {
                     suppressTagColorChange = false
@@ -126,11 +129,11 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 12) {
                 GroupBox("Query") {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Find tag")
+                        Text("Find tag or file type")
                             .font(.headline)
 
                         HStack(spacing: 6) {
-                            AutocompleteTagTextField(placeholder: String(localized: "Tag name"),
+                            AutocompleteTagTextField(placeholder: String(localized: "Tag or file type"),
                                                      text: $queryTagName,
                                                      onMoveUp: {
                                                          moveQuerySuggestionSelection(delta: -1)
@@ -175,23 +178,32 @@ struct ContentView: View {
                             .disabled(!canRemoveTypedTagFromQuery)
                         }
 
-                        if !queryTagSuggestions.isEmpty {
+                        if !querySuggestions.isEmpty {
                             VStack(alignment: .leading, spacing: 4) {
-                                ForEach(queryTagSuggestions) { entry in
-                                    let isHighlighted = highlightedQuerySuggestionID == entry.id
+                                ForEach(querySuggestions) { suggestion in
+                                    let isHighlighted = highlightedQuerySuggestionID == suggestion.id
                                     Button {
-                                        selectQuerySuggestion(entry)
+                                        selectQuerySuggestion(suggestion)
                                     } label: {
                                         HStack(spacing: 8) {
-                                            if let hex = entry.color.hexValue,
-                                               let color = colorFromHex(hex)
-                                            {
-                                                Circle()
-                                                    .fill(color)
-                                                    .frame(width: 8, height: 8)
+                                            switch suggestion {
+                                            case let .tag(entry):
+                                                if let hex = entry.color.hexValue,
+                                                   let color = colorFromHex(hex)
+                                                {
+                                                    Circle()
+                                                        .fill(color)
+                                                        .frame(width: 8, height: 8)
+                                                }
+                                                Text(entry.displayName)
+                                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                            case let .fileType(kind):
+                                                Image(systemName: "doc")
+                                                    .imageScale(.small)
+                                                    .foregroundStyle(.secondary)
+                                                Text(kind)
+                                                    .frame(maxWidth: .infinity, alignment: .leading)
                                             }
-                                            Text(entry.displayName)
-                                                .frame(maxWidth: .infinity, alignment: .leading)
                                         }
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 2)
@@ -207,22 +219,33 @@ struct ContentView: View {
                             .background(RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.15)))
                         }
 
-                        tagChips(title: "Include", tags: Array(state.includeTags).sorted(), tint: .green) { tag in
-                            state.includeTags.remove(tag)
-                        }
+                        queryFilterChips(title: "Include",
+                                         tags: Array(state.includeTags).sorted(),
+                                         fileTypes: Array(state.includeFileTypes).sorted(),
+                                         tint: .green,
+                                         onRemoveTag: { state.includeTags.remove($0) },
+                                         onRemoveFileType: { state.includeFileTypes.remove($0) })
 
-                        tagChips(title: "Exclude", tags: Array(state.excludeTags).sorted(), tint: .red) { tag in
-                            state.excludeTags.remove(tag)
-                        }
+                        queryFilterChips(title: "Exclude",
+                                         tags: Array(state.excludeTags).sorted(),
+                                         fileTypes: Array(state.excludeFileTypes).sorted(),
+                                         tint: .red,
+                                         onRemoveTag: { state.excludeTags.remove($0) },
+                                         onRemoveFileType: { state.excludeFileTypes.remove($0) })
 
                         HStack {
                             Spacer()
-                            // Clears all include and exclude tags from the active query.
+                            // Clears all include/exclude tags and file-type filters from the active query.
                             Button("Clear Query") {
                                 state.includeTags.removeAll()
                                 state.excludeTags.removeAll()
+                                state.includeFileTypes.removeAll()
+                                state.excludeFileTypes.removeAll()
                             }
-                            .disabled(state.includeTags.isEmpty && state.excludeTags.isEmpty)
+                            .disabled(state.includeTags.isEmpty
+                                && state.excludeTags.isEmpty
+                                && state.includeFileTypes.isEmpty
+                                && state.excludeFileTypes.isEmpty)
                         }
                     }
                     .padding(.top, 4)
@@ -300,6 +323,53 @@ struct ContentView: View {
                                     }
                                 }
                                 .padding(.vertical, 2)
+                            }
+                        }
+                    }
+                }
+
+                GroupBox("File type") {
+                    if state.scopeURLs.isEmpty {
+                        Text("Choose a folder to begin.")
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 4)
+                    } else if search.topFileTypeFacets.isEmpty {
+                        Text("No file types found in current results.")
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 4)
+                    } else {
+                        LazyVStack(alignment: .leading, spacing: 6) {
+                            ForEach(search.topFileTypeFacets) { facet in
+                                HStack(spacing: 10) {
+                                    Button {
+                                        includeFileType(facet.fileType)
+                                    } label: {
+                                        Image(systemName: "plus.circle.fill")
+                                            .foregroundStyle(.green)
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    Button {
+                                        excludeFileType(facet.fileType)
+                                    } label: {
+                                        Image(systemName: "minus.circle.fill")
+                                            .foregroundStyle(.red)
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    Text(facet.fileType)
+                                        .lineLimit(1)
+
+                                    Spacer()
+                                    Text("\(facet.count)")
+                                        .foregroundStyle(.secondary)
+                                        .monospacedDigit()
+                                }
+                                .contentShape(Rectangle())
+                                .contextMenu {
+                                    Button("Include") { includeFileType(facet.fileType) }
+                                    Button("Exclude") { excludeFileType(facet.fileType) }
+                                }
                             }
                         }
                     }
@@ -652,6 +722,16 @@ struct ContentView: View {
         state.excludeTags.insert(tag)
     }
 
+    private func includeFileType(_ fileType: String) {
+        state.excludeFileTypes.remove(fileType)
+        state.includeFileTypes.insert(fileType)
+    }
+
+    private func excludeFileType(_ fileType: String) {
+        state.includeFileTypes.remove(fileType)
+        state.excludeFileTypes.insert(fileType)
+    }
+
     private func includeTypedTagInQuery() {
         guard let tag = resolvedQueryTagName else { return }
         include(tag: tag)
@@ -814,35 +894,61 @@ struct ContentView: View {
                                                                                         previousID: highlightedSuggestionID)
     }
 
-    private func selectQuerySuggestion(_ entry: TagAutocompleteEntry) {
-        queryTagName = entry.displayName
-        highlightedQuerySuggestionID = entry.id
+    /// Applies a query suggestion: both tag and file-type suggestions are immediately
+    /// included and the field is cleared, so clicking or tab-completing either kind
+    /// has consistent, single-step behavior.
+    private func selectQuerySuggestion(_ suggestion: QuerySuggestion) {
+        switch suggestion {
+        case let .tag(entry):
+            include(tag: entry.displayName)
+        case let .fileType(kind):
+            includeFileType(kind)
+        }
+        queryTagName = ""
+        highlightedQuerySuggestionID = nil
     }
 
     private func moveQuerySuggestionSelection(delta: Int) -> Bool {
-        guard let id = TagAutocompleteLogic.movedHighlightedSuggestionID(in: queryTagSuggestions,
-                                                                         currentID: highlightedQuerySuggestionID,
-                                                                         delta: delta)
-        else {
-            return false
+        let suggestions = querySuggestions
+        guard !suggestions.isEmpty, delta != 0 else { return false }
+        let id: String
+        if let currentID = highlightedQuerySuggestionID,
+           let index = suggestions.firstIndex(where: { $0.id == currentID })
+        {
+            let count = suggestions.count
+            id = suggestions[(index + delta % count + count) % count].id
+        } else {
+            id = (delta > 0 ? suggestions.first : suggestions.last)?.id ?? suggestions[0].id
         }
         highlightedQuerySuggestionID = id
         return true
     }
 
     private func acceptHighlightedQuerySuggestion() -> Bool {
-        guard let entry = TagAutocompleteLogic.acceptedSuggestion(in: queryTagSuggestions,
-                                                                  highlightedID: highlightedQuerySuggestionID)
-        else {
+        let suggestions = querySuggestions
+        guard !suggestions.isEmpty else { return false }
+        let suggestion: QuerySuggestion
+        if let currentID = highlightedQuerySuggestionID,
+           let match = suggestions.first(where: { $0.id == currentID })
+        {
+            suggestion = match
+        } else if let first = suggestions.first {
+            suggestion = first
+        } else {
             return false
         }
-        selectQuerySuggestion(entry)
+        selectQuerySuggestion(suggestion)
         return true
     }
 
     private func syncQueryHighlightedSuggestion() {
-        highlightedQuerySuggestionID = TagAutocompleteLogic.preferredHighlightedSuggestionID(in: queryTagSuggestions,
-                                                                                             previousID: highlightedQuerySuggestionID)
+        let suggestions = querySuggestions
+        if let previous = highlightedQuerySuggestionID,
+           suggestions.contains(where: { $0.id == previous })
+        {
+            return
+        }
+        highlightedQuerySuggestionID = suggestions.first?.id
     }
 
     private func handleResultSelection(_ item: SearchResultItem) {
@@ -947,6 +1053,68 @@ struct ContentView: View {
             }
         }
     }
+
+    /// Renders the Include or Exclude chip row, showing tag chips and file-type chips together
+    /// under the same heading.  File-type chips carry a small document icon to distinguish them.
+    private func queryFilterChips(title: LocalizedStringKey,
+                                  tags: [String],
+                                  fileTypes: [String],
+                                  tint: Color,
+                                  onRemoveTag: @escaping (String) -> Void,
+                                  onRemoveFileType: @escaping (String) -> Void) -> some View
+    {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.headline)
+
+            if tags.isEmpty, fileTypes.isEmpty {
+                Text("—")
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 2)
+            } else {
+                let columns = [GridItem(.adaptive(minimum: 140), spacing: 8, alignment: .leading)]
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                    ForEach(tags, id: \.self) { tag in
+                        HStack(spacing: 6) {
+                            Text(tag)
+                                .lineLimit(1)
+                            Button {
+                                onRemoveTag(tag)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(tint.opacity(0.8))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(tint.opacity(0.12)))
+                    }
+                    ForEach(fileTypes, id: \.self) { fileType in
+                        HStack(spacing: 4) {
+                            Image(systemName: "doc")
+                                .imageScale(.small)
+                                .foregroundStyle(tint.opacity(0.6))
+                            Text(fileType)
+                                .lineLimit(1)
+                            Button {
+                                onRemoveFileType(fileType)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(tint.opacity(0.8))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(tint.opacity(0.08)))
+                    }
+                }
+            }
+        }
+    }
 }
 
 private struct AutocompleteTagTextField: NSViewRepresentable {
@@ -1029,6 +1197,20 @@ private struct FacetGroup: Identifiable {
     let facets: [TagFacet]
     var id: String {
         key
+    }
+}
+
+/// A single item in the unified query autocomplete dropdown.
+/// Tag suggestions fill the text field; file-type suggestions are applied immediately.
+private enum QuerySuggestion: Identifiable {
+    case tag(TagAutocompleteEntry)
+    case fileType(String)
+
+    var id: String {
+        switch self {
+        case let .tag(entry): entry.id
+        case let .fileType(kind): "filetype:\(kind)"
+        }
     }
 }
 
@@ -1134,6 +1316,22 @@ private extension ContentView {
 
     var queryTagSuggestions: [TagAutocompleteEntry] {
         TagAutocompleteLogic.suggestions(for: queryTagName, in: queryTagCatalog, limit: 5)
+    }
+
+    /// Unified suggestion list shown in the query dropdown.
+    /// Tag matches appear first, followed by file-type matches from the scope catalog.
+    var querySuggestions: [QuerySuggestion] {
+        let tagItems = queryTagSuggestions.map(QuerySuggestion.tag)
+        let input = queryTagName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !input.isEmpty else { return tagItems }
+        let typeItems = search.scopeFileTypeCatalog
+            .filter { kind in
+                let lower = kind.lowercased()
+                return lower.contains(input) && lower != input
+            }
+            .prefix(5)
+            .map(QuerySuggestion.fileType)
+        return tagItems + Array(typeItems)
     }
 
     func normalizedTagName(_ name: String) -> String {
