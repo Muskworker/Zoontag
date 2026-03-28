@@ -241,12 +241,22 @@
         }
       }
     },
-    "Find tag" : {
+    "File type" : {
       "localizations" : {
         "es-419" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Buscar etiqueta"
+            "value" : "Tipo de archivo"
+          }
+        }
+      }
+    },
+    "Find tag or file type" : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscar etiqueta o tipo de archivo"
           }
         }
       }
@@ -422,6 +432,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sin color"
+          }
+        }
+      }
+    },
+    "No file types found in current results." : {
+      "localizations" : {
+        "es-419" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se encontraron tipos de archivo en los resultados actuales."
           }
         }
       }
@@ -798,13 +818,13 @@
         }
       }
     },
-    "Tag name" : {
-      "comment" : "Placeholder text in the tag search/input field.",
+    "Tag or file type" : {
+      "comment" : "Placeholder text in the combined tag and file-type search field.",
       "localizations" : {
         "es-419" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nombre de etiqueta"
+            "value" : "Etiqueta o tipo de archivo"
           }
         }
       }

@@ -14,6 +14,9 @@ final class MetadataSearchController: ObservableObject {
     /// Root cause: result-derived suggestions shrink as filters narrow the live result set, so
     /// query autocomplete needs its own scope-wide catalog that stays independent of the current run.
     @Published private(set) var scopeTagCatalog: [String: TagAutocompleteEntry] = [:]
+    /// Sorted list of all distinct file kinds found in the current scope, independent of any
+    /// active filters.  Used to power file-type autocomplete in the query bar.
+    @Published private(set) var scopeFileTypeCatalog: [String] = []
 
     private let facetCounter = FacetCounter()
     private let pageSize = 5000
@@ -22,6 +25,8 @@ final class MetadataSearchController: ObservableObject {
 
     /// Exposed facets (computed from results)
     @Published private(set) var topFacets: [TagFacet] = []
+    /// File-kind facets derived from the current result set.
+    @Published private(set) var topFileTypeFacets: [FileTypeFacet] = []
 
     private var query: NSMetadataQuery?
     private var observers: [NSObjectProtocol] = []
@@ -52,6 +57,8 @@ final class MetadataSearchController: ObservableObject {
     private struct SearchCacheKey: Equatable {
         let includeTags: Set<String>
         let excludeTags: Set<String>
+        let includeFileTypes: Set<String>
+        let excludeFileTypes: Set<String>
         let scopePaths: [String]
         let includeSubdirectories: Bool
     }
@@ -219,28 +226,56 @@ final class MetadataSearchController: ObservableObject {
         let filtered = clientSideFilter(items)
         results = filtered
         topFacets = facetCounter.topTags(from: filtered)
+        topFileTypeFacets = facetCounter.topFileTypes(from: filtered)
         knownTotalResults = totalCount
         hasMoreResults = hasMore
         resultsSortOption = sortOption
         isRefiningResults = isPreview
     }
 
-    /// Returns only the items whose on-disk tags still satisfy the current
-    /// include and exclude filters, using the same case-insensitive comparison
-    /// that tag normalization uses elsewhere in the app.
+    /// Returns only the items that satisfy the current tag and file-type filters.
+    ///
+    /// Tag matching uses case-insensitive comparison consistent with tag normalization
+    /// elsewhere in the app. Multiple include tags are AND-joined; multiple include file
+    /// types are OR-joined (the item just needs to match any one of them). Exclude sets
+    /// use the same OR logic: matching any excluded tag or type removes the item.
     private func clientSideFilter(_ items: [SearchResultItem]) -> [SearchResultItem] {
-        guard let state = lastRunState,
-              !state.includeTags.isEmpty || !state.excludeTags.isEmpty
-        else {
-            return items
-        }
+        guard let state = lastRunState else { return items }
+
+        let hasTagFilters = !state.includeTags.isEmpty || !state.excludeTags.isEmpty
+        let hasTypeFilters = !state.includeFileTypes.isEmpty || !state.excludeFileTypes.isEmpty
+
+        guard hasTagFilters || hasTypeFilters else { return items }
+
         let normalize: (String) -> String = { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+
         let includeLower = state.includeTags.map(normalize)
         let excludeLower = state.excludeTags.map(normalize)
+        // File-type comparison is case-insensitive to tolerate minor platform variations.
+        let includeTypesLower = state.includeFileTypes.map(normalize)
+        let excludeTypesLower = state.excludeFileTypes.map(normalize)
+
         return items.filter { item in
-            let itemNames = item.tags.map { normalize($0.name) }
-            return includeLower.allSatisfy { itemNames.contains($0) }
-                && excludeLower.allSatisfy { !itemNames.contains($0) }
+            if hasTagFilters {
+                let itemNames = item.tags.map { normalize($0.name) }
+                guard includeLower.allSatisfy({ itemNames.contains($0) }),
+                      excludeLower.allSatisfy({ !itemNames.contains($0) })
+                else { return false }
+            }
+
+            if hasTypeFilters {
+                let kind = normalize(item.fileKind ?? "")
+                // Include filter: item must match at least one of the required kinds.
+                if !includeTypesLower.isEmpty, !includeTypesLower.contains(kind) {
+                    return false
+                }
+                // Exclude filter: item must not match any of the excluded kinds.
+                if excludeTypesLower.contains(kind) {
+                    return false
+                }
+            }
+
+            return true
         }
     }
 
@@ -266,6 +301,8 @@ final class MetadataSearchController: ObservableObject {
         let scopePaths = normalizedScopePaths(for: state.scopeURLs)
         return SearchCacheKey(includeTags: state.includeTags,
                               excludeTags: state.excludeTags,
+                              includeFileTypes: state.includeFileTypes,
+                              excludeFileTypes: state.excludeFileTypes,
                               scopePaths: scopePaths,
                               includeSubdirectories: state.includeSubdirectories)
     }
@@ -291,6 +328,7 @@ final class MetadataSearchController: ObservableObject {
         cachedScopeTagIndexKey = nil
         scopeTagCatalogNeedsRefresh = true
         scopeTagCatalog = [:]
+        scopeFileTypeCatalog = []
     }
 
     private func cacheSortableResults(_ items: [SearchResultItem], for state: QueryState) {
@@ -362,10 +400,13 @@ final class MetadataSearchController: ObservableObject {
 
             let catalog = buildScopeTagCatalog(scopeURLs: accessibleScopeURLs,
                                                includeSubdirectories: includeSubdirectories)
+            let fileTypes = buildScopeFileTypeCatalog(scopeURLs: accessibleScopeURLs,
+                                                      includeSubdirectories: includeSubdirectories)
             DispatchQueue.main.async {
                 guard self.currentScopeTagIndexToken == indexToken,
                       self.cachedScopeTagIndexKey == key else { return }
                 self.scopeTagCatalog = catalog
+                self.scopeFileTypeCatalog = fileTypes
             }
         }
     }
@@ -520,6 +561,53 @@ final class MetadataSearchController: ObservableObject {
         return catalog
     }
 
+    /// Enumerates the scope and returns a sorted list of all distinct localized file kinds
+    /// (e.g. "PDF Document", "JPEG image") found in it.  Used to populate the scope-wide
+    /// file-type autocomplete catalog, which is independent of any active query filters.
+    private func buildScopeFileTypeCatalog(scopeURLs: [URL], includeSubdirectories: Bool) -> [String] {
+        let fm = FileManager.default
+        let resourceKeys: Set<URLResourceKey> = [.isRegularFileKey,
+                                                 .isDirectoryKey,
+                                                 .localizedTypeDescriptionKey]
+        var kinds: Set<String> = []
+
+        for scope in scopeURLs {
+            let scopeValues = try? scope.resourceValues(forKeys: resourceKeys)
+            if scopeValues?.isRegularFile == true {
+                if let kind = scopeValues?.localizedTypeDescription { kinds.insert(kind) }
+                continue
+            }
+
+            if !includeSubdirectories {
+                let children = (try? fm.contentsOfDirectory(at: scope,
+                                                            includingPropertiesForKeys: Array(resourceKeys),
+                                                            options: [.skipsHiddenFiles,
+                                                                      .skipsPackageDescendants])) ?? []
+                for fileURL in children {
+                    let values = try? fileURL.resourceValues(forKeys: resourceKeys)
+                    guard values?.isRegularFile == true else { continue }
+                    if let kind = values?.localizedTypeDescription { kinds.insert(kind) }
+                }
+                continue
+            }
+
+            guard scopeValues?.isDirectory ?? true,
+                  let enumerator = fm.enumerator(at: scope,
+                                                 includingPropertiesForKeys: Array(resourceKeys),
+                                                 options: [.skipsHiddenFiles, .skipsPackageDescendants],
+                                                 errorHandler: nil)
+            else { continue }
+
+            for case let fileURL as URL in enumerator {
+                let values = try? fileURL.resourceValues(forKeys: resourceKeys)
+                guard values?.isRegularFile == true else { continue }
+                if let kind = values?.localizedTypeDescription { kinds.insert(kind) }
+            }
+        }
+
+        return kinds.sorted()
+    }
+
     private func makeResult(url: URL,
                             preferredName: String? = nil,
                             fallbackName: String? = nil,
@@ -530,14 +618,18 @@ final class MetadataSearchController: ObservableObject {
         let displayName = preferredName ?? fallbackName ?? url.lastPathComponent
         let tags = normalizedTags(primaryTags: primaryTags, fallbackTags: fallbackTags, url: url)
         let metadata = resourceValues
-            ?? (try? url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey, .fileSizeKey]))
+            ?? (try? url.resourceValues(forKeys: [.contentModificationDateKey,
+                                                  .creationDateKey,
+                                                  .fileSizeKey,
+                                                  .localizedTypeDescriptionKey]))
 
         return SearchResultItem(url: url,
                                 displayName: displayName,
                                 tags: tags,
                                 contentModificationDate: metadata?.contentModificationDate,
                                 creationDate: metadata?.creationDate,
-                                fileSizeBytes: metadata?.fileSize.map(Int64.init))
+                                fileSizeBytes: metadata?.fileSize.map(Int64.init),
+                                fileKind: metadata?.localizedTypeDescription)
     }
 
     private func makeSortableResult(url: URL,
@@ -547,14 +639,18 @@ final class MetadataSearchController: ObservableObject {
     {
         let displayName = preferredName ?? fallbackName ?? url.lastPathComponent
         let metadata = resourceValues
-            ?? (try? url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey, .fileSizeKey]))
+            ?? (try? url.resourceValues(forKeys: [.contentModificationDateKey,
+                                                  .creationDateKey,
+                                                  .fileSizeKey,
+                                                  .localizedTypeDescriptionKey]))
 
         return SearchResultItem(url: url,
                                 displayName: displayName,
                                 tags: [],
                                 contentModificationDate: metadata?.contentModificationDate,
                                 creationDate: metadata?.creationDate,
-                                fileSizeBytes: metadata?.fileSize.map(Int64.init))
+                                fileSizeBytes: metadata?.fileSize.map(Int64.init),
+                                fileKind: metadata?.localizedTypeDescription)
     }
 
     private func hydrateVisibleResults(_ items: [SearchResultItem],
@@ -569,12 +665,15 @@ final class MetadataSearchController: ObservableObject {
                                     tags: tags,
                                     contentModificationDate: item.contentModificationDate,
                                     creationDate: item.creationDate,
-                                    fileSizeBytes: item.fileSizeBytes)
+                                    fileSizeBytes: item.fileSizeBytes,
+                                    fileKind: item.fileKind)
         }
     }
 
     private func resourceKeysForSort(_ sortOption: SearchResultSortOption) -> Set<URLResourceKey> {
-        var keys: Set<URLResourceKey> = [.localizedNameKey]
+        // Always fetch the localized type description so file-kind facets and
+        // file-type filters work regardless of the active sort option.
+        var keys: Set<URLResourceKey> = [.localizedNameKey, .localizedTypeDescriptionKey]
 
         switch sortOption {
         case .nameAscending, .nameDescending:

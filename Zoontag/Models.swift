@@ -8,13 +8,17 @@ struct SearchResultItem: Identifiable, Hashable {
     let contentModificationDate: Date?
     let creationDate: Date?
     let fileSizeBytes: Int64?
+    /// Human-readable file kind (e.g. "PDF Document", "JPEG image") from the system's
+    /// localized type description. Nil when the kind cannot be determined.
+    let fileKind: String?
 
     init(url: URL,
          displayName: String,
          tags: [FinderTag],
          contentModificationDate: Date? = nil,
          creationDate: Date? = nil,
-         fileSizeBytes: Int64? = nil)
+         fileSizeBytes: Int64? = nil,
+         fileKind: String? = nil)
     {
         self.url = url
         self.displayName = displayName
@@ -22,6 +26,7 @@ struct SearchResultItem: Identifiable, Hashable {
         self.contentModificationDate = contentModificationDate
         self.creationDate = creationDate
         self.fileSizeBytes = fileSizeBytes
+        self.fileKind = fileKind
     }
 
     var id: URL {

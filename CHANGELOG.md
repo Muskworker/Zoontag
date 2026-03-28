@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **File type filtering**: a new "File type" section in the sidebar lists the file kinds present in your current results (e.g. "PDF Document", "JPEG image"). Click **+** to include a type or **–** to exclude one. You can include or exclude multiple file types and they are combined with OR logic — so including both "PDF Document" and "JPEG image" shows files of either kind. Active file type filters appear alongside tag filters in the Include/Exclude chip rows at the top of the sidebar.
+- The **Find tag or file type** search field now also searches across all file types present anywhere in the selected folder (not just the current results), so you can filter by a type even when no files of that type are currently visible.
+
 ## [1.3.0] - 2026-03-27
 
 ### Added

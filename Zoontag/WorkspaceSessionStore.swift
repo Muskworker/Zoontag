@@ -23,6 +23,10 @@ final class WorkspaceSessionStore {
         let scopes: [PersistedScope]
         /// Nil in sessions saved before this field was introduced; treated as true on restore.
         let includeSubdirectories: Bool?
+        /// Nil in sessions saved before file-type filters were introduced; treated as empty on restore.
+        let includeFileTypes: [String]?
+        /// Nil in sessions saved before file-type filters were introduced; treated as empty on restore.
+        let excludeFileTypes: [String]?
     }
 
     private let defaults: UserDefaults
@@ -54,7 +58,9 @@ final class WorkspaceSessionStore {
                                        sortOptionRawValue: queryState.sortOption.rawValue,
                                        isDetailPaneVisible: isDetailPaneVisible,
                                        scopes: persistedScopes,
-                                       includeSubdirectories: queryState.includeSubdirectories)
+                                       includeSubdirectories: queryState.includeSubdirectories,
+                                       includeFileTypes: Array(queryState.includeFileTypes).sorted(),
+                                       excludeFileTypes: Array(queryState.excludeFileTypes).sorted())
         persist(payload)
     }
 
@@ -98,6 +104,8 @@ final class WorkspaceSessionStore {
 
         let restoredState = QueryState(includeTags: Set(persisted.includeTags),
                                        excludeTags: Set(persisted.excludeTags),
+                                       includeFileTypes: Set(persisted.includeFileTypes ?? []),
+                                       excludeFileTypes: Set(persisted.excludeFileTypes ?? []),
                                        scopeURLs: restoredURLs,
                                        sortOption: restoredSortOption,
                                        includeSubdirectories: persisted.includeSubdirectories ?? true)
@@ -110,7 +118,9 @@ final class WorkspaceSessionStore {
                                               sortOptionRawValue: restoredState.sortOption.rawValue,
                                               isDetailPaneVisible: session.isDetailPaneVisible,
                                               scopes: updatedScopes,
-                                              includeSubdirectories: restoredState.includeSubdirectories)
+                                              includeSubdirectories: restoredState.includeSubdirectories,
+                                              includeFileTypes: Array(restoredState.includeFileTypes).sorted(),
+                                              excludeFileTypes: Array(restoredState.excludeFileTypes).sorted())
             persist(normalized)
         }
 
