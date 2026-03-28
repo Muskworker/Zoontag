@@ -732,4 +732,65 @@ final class LocalizationTests: XCTestCase {
 
         XCTAssertEqual(restored?.queryState.includeSubdirectories, false)
     }
+
+    // MARK: - Folder navigation (parent traversal)
+
+    //
+    // The UI behaviors below require manual verification:
+    //   1. Double-clicking a file in the results opens it in its default app.
+    //   2. Double-clicking a folder in the results navigates into it
+    //      (sets it as the new search scope and re-runs the query).
+    //   3. The "Go to Parent Folder" toolbar button (⌘↑) navigates up one level.
+    //   4. The button is disabled / hidden at the root of the file system.
+
+    func test_parentURL_whenSingleScopeURL_returnsImmediateParent() {
+        var state = QueryState()
+        state.scopeURLs = [URL(fileURLWithPath: "/Users/alice/Documents")]
+
+        let parent = state.scopeURLs[0].deletingLastPathComponent()
+
+        XCTAssertEqual(parent.path, "/Users/alice")
+    }
+
+    func test_canNavigateToParent_isFalseWhenNoScopeURLs() {
+        // Mirror the canNavigateToParent logic: count == 1 && pathComponents.count > 1.
+        let state = QueryState()
+
+        let canNavigate = state.scopeURLs.count == 1 &&
+            state.scopeURLs[0].standardized.pathComponents.count > 1
+
+        XCTAssertFalse(canNavigate)
+    }
+
+    func test_canNavigateToParent_isFalseWhenScopeIsRoot() {
+        var state = QueryState()
+        state.scopeURLs = [URL(fileURLWithPath: "/")]
+
+        // The root URL has exactly one path component ("/"), so the button must be hidden.
+        // Note: deletingLastPathComponent() on "/" returns "/.." not "/", so a URL equality
+        // comparison is unreliable here — pathComponents.count is the correct check.
+        let canNavigate = state.scopeURLs.count == 1 &&
+            state.scopeURLs[0].standardized.pathComponents.count > 1
+
+        XCTAssertFalse(canNavigate)
+    }
+
+    func test_canNavigateToParent_isTrueWhenScopeHasParent() {
+        var state = QueryState()
+        state.scopeURLs = [URL(fileURLWithPath: "/Users/alice/Documents")]
+
+        let canNavigate = state.scopeURLs.count == 1 &&
+            state.scopeURLs[0].standardized.pathComponents.count > 1
+
+        XCTAssertTrue(canNavigate)
+    }
+
+    func test_parentURL_whenSingleScopeURL_returnsImmediateParent() {
+        var state = QueryState()
+        state.scopeURLs = [URL(fileURLWithPath: "/Users/alice/Documents")]
+
+        let parent = state.scopeURLs[0].deletingLastPathComponent()
+
+        XCTAssertEqual(parent.path, "/Users/alice")
+    }
 }

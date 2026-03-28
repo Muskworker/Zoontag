@@ -8,6 +8,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Added
+- **Open and navigate by double-clicking**: double-clicking a file in the results opens it in its default app. Double-clicking a folder navigates into it, making that folder the new search scope.
+- **Navigate to parent folder**: an up-arrow button appears in the toolbar whenever you are browsing inside a folder. Click it — or press **⌘↑** — to move up one level. The button is hidden when there is no folder scoped or when you are already at the filesystem root.
+- **Window title shows current folder**: the title bar now displays the name of the folder you are browsing, so you always know where you are. When no folder is scoped the title returns to "Zoontag".
 - **File type filtering**: a new "File type" section in the sidebar lists the file kinds present in your current results (e.g. "PDF Document", "JPEG image"). Click **+** to include a type or **–** to exclude one. You can include or exclude multiple file types and they are combined with OR logic — so including both "PDF Document" and "JPEG image" shows files of either kind. Active file type filters appear alongside tag filters in the Include/Exclude chip rows at the top of the sidebar.
 - The **Find tag or file type** search field now also searches across all file types present anywhere in the selected folder (not just the current results), so you can filter by a type even when no files of that type are currently visible.
 
